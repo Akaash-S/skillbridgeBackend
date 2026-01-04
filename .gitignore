@@ -4,3 +4,4 @@ test_*.py
 service-account.json
 venv/
 *.md
+__pycache__/
