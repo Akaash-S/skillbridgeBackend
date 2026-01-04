@@ -56,12 +56,42 @@ def generate_roadmap():
                 'code': 'ROADMAP_GENERATION_FAILED'
             }), 500
         
-        return jsonify({
-            'message': 'Roadmap generated successfully',
-            'roadmapId': result.get('roadmapId'),
-            'roadmap': result.get('roadmap'),
-            'source': result.get('source', 'ai')
-        }), 201
+        # Format roadmap for frontend compatibility
+        roadmap_data = result.get('roadmap', {})
+        milestones = roadmap_data.get('milestones', [])
+        
+        # Convert to frontend RoadmapItem format
+        roadmap_items = []
+        for milestone in milestones:
+            for skill in milestone.get('skills', []):
+                # Get learning resources for this skill
+                resources = db_service.query_collection('learning_resources', [('skillId', '==', skill['skillId'])])
+                
+                # Format resources for frontend
+                formatted_resources = []
+                for resource in resources:
+                    formatted_resource = {
+                        'id': resource.get('id', ''),
+                        'title': resource.get('title', ''),
+                        'url': resource.get('url', ''),
+                        'type': resource.get('type', 'course'),
+                        'duration': resource.get('duration', ''),
+                        'provider': resource.get('provider', '')
+                    }
+                    formatted_resources.append(formatted_resource)
+                
+                roadmap_item = {
+                    'id': f"roadmap-{skill['skillId']}",
+                    'skillId': skill['skillId'],
+                    'skillName': skill.get('skillName', skill['skillId']),
+                    'resources': formatted_resources,
+                    'difficulty': skill.get('targetLevel', 'intermediate'),
+                    'estimatedTime': f"{skill.get('estimatedHours', 20)} hours",
+                    'completed': False
+                }
+                roadmap_items.append(roadmap_item)
+        
+        return jsonify(roadmap_items), 201
         
     except Exception as e:
         logger.error(f"Generate roadmap error: {str(e)}")

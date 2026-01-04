@@ -20,6 +20,7 @@ def create_app():
     from app.routes.auth import auth_bp
     from app.routes.users import users_bp
     from app.routes.skills import skills_bp
+    from app.routes.roles import roles_bp
     from app.routes.roadmap import roadmap_bp
     from app.routes.learning import learning_bp
     from app.routes.jobs import jobs_bp
@@ -29,6 +30,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(users_bp, url_prefix='/users')
     app.register_blueprint(skills_bp, url_prefix='/skills')
+    app.register_blueprint(roles_bp, url_prefix='/roles')
     app.register_blueprint(roadmap_bp, url_prefix='/roadmap')
     app.register_blueprint(learning_bp, url_prefix='/learning')
     app.register_blueprint(jobs_bp, url_prefix='/jobs')

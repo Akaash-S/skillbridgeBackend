@@ -30,18 +30,33 @@ def get_skills():
             else:
                 skills = skills_engine.get_master_skills(category=category)
             
-            return jsonify({
-                'skills': skills,
-                'type': 'master'
-            }), 200
+            # Format skills for frontend compatibility
+            formatted_skills = []
+            for skill in skills:
+                formatted_skill = {
+                    'id': skill.get('skillId'),  # Frontend expects 'id' not 'skillId'
+                    'name': skill.get('name'),
+                    'category': skill.get('category')
+                }
+                formatted_skills.append(formatted_skill)
+            
+            return jsonify(formatted_skills), 200
         
         else:  # user skills
             skills = skills_engine.get_user_skills(uid)
             
-            return jsonify({
-                'skills': skills,
-                'type': 'user'
-            }), 200
+            # Format user skills for frontend
+            formatted_skills = []
+            for skill in skills:
+                formatted_skill = {
+                    'id': skill.get('skillId'),
+                    'name': skill.get('name'),
+                    'category': skill.get('category'),
+                    'proficiency': skill.get('userLevel', skill.get('level'))
+                }
+                formatted_skills.append(formatted_skill)
+            
+            return jsonify(formatted_skills), 200
             
     except Exception as e:
         logger.error(f"Get skills error: {str(e)}")
