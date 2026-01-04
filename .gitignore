@@ -3,3 +3,4 @@ test_*.py
 .env
 service-account.json
 venv/
+*.md
