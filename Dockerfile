@@ -19,9 +19,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements.txt requirements-minimal.txt ./
 
-# Install Python dependencies
+# Install Python dependencies (use minimal for production)
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
