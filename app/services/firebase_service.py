@@ -102,18 +102,24 @@ def auth_required(f):
             # Extract token from Authorization header
             token = FirebaseAuthService.extract_token_from_request()
             if not token:
+                logger.warning("Missing authorization token in request")
                 return jsonify({
                     'error': 'Missing authorization token',
                     'code': 'AUTH_TOKEN_MISSING'
                 }), 401
             
+            logger.info(f"Verifying token: {token[:20]}...")
+            
             # Verify token
             user_info = FirebaseAuthService.verify_token(token)
             if not user_info:
+                logger.warning(f"Invalid or expired token: {token[:20]}...")
                 return jsonify({
                     'error': 'Invalid or expired token',
                     'code': 'AUTH_TOKEN_INVALID'
                 }), 401
+            
+            logger.info(f"Token verified successfully for user: {user_info.get('email', 'unknown')}")
             
             # Add user info to request context
             request.current_user = user_info

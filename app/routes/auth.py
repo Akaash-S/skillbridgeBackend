@@ -158,3 +158,42 @@ def verify_token():
             'error': 'Token verification failed',
             'code': 'TOKEN_VERIFICATION_ERROR'
         }), 500
+
+@auth_bp.route('/debug-token', methods=['GET'])
+def debug_token():
+    """
+    Debug endpoint to check what token is being received
+    """
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({
+                'error': 'No Authorization header found',
+                'headers': dict(request.headers)
+            }), 400
+        
+        # Extract token
+        try:
+            scheme, token = auth_header.split(' ', 1)
+            token_preview = f"{token[:20]}...{token[-10:]}" if len(token) > 30 else token
+        except ValueError:
+            return jsonify({
+                'error': 'Invalid Authorization header format',
+                'auth_header': auth_header
+            }), 400
+        
+        # Try to verify token
+        user_info = FirebaseAuthService.verify_token(token)
+        
+        return jsonify({
+            'token_preview': token_preview,
+            'token_length': len(token),
+            'verification_result': 'valid' if user_info else 'invalid',
+            'user_info': user_info if user_info else None
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Debug failed: {str(e)}',
+            'auth_header': request.headers.get('Authorization', 'None')
+        }), 500

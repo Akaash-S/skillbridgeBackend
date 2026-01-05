@@ -209,7 +209,7 @@ def get_roadmap():
 @auth_required
 def update_progress():
     """
-    Update roadmap progress
+    Update roadmap progress and trigger analysis update
     Expected payload: {
         "milestoneIndex": number,
         "skillId": "string",
@@ -253,6 +253,21 @@ def update_progress():
                 'error': 'Failed to update roadmap progress',
                 'code': 'UPDATE_PROGRESS_FAILED'
             }), 400
+        
+        # If skill was completed, update analysis
+        if completed:
+            from app.services.analysis_tracker import AnalysisTracker
+            analysis_tracker = AnalysisTracker()
+            
+            # Get user's active roadmap to find the target role
+            active_roadmap = db_service.get_user_roadmap(uid)
+            if active_roadmap:
+                role_id = active_roadmap.get('roleId')
+                if role_id:
+                    # Update analysis based on completion
+                    analysis_updated = analysis_tracker.update_analysis_on_completion(uid, role_id, skill_id)
+                    if analysis_updated:
+                        logger.info(f"Updated analysis for user {uid} after completing skill {skill_id}")
         
         return jsonify({
             'message': 'Roadmap progress updated successfully',

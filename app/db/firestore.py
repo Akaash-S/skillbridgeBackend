@@ -89,7 +89,12 @@ class FirestoreService:
                 query = query.limit(limit)
             
             docs = query.stream()
-            return [doc.to_dict() for doc in docs]
+            results = []
+            for doc in docs:
+                doc_data = doc.to_dict()
+                doc_data['id'] = doc.id  # Add document ID to the data
+                results.append(doc_data)
+            return results
         except Exception as e:
             logger.error(f"Error querying collection {collection}: {str(e)}")
             return []

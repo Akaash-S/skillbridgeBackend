@@ -273,10 +273,27 @@ def get_related_skills(skill_id):
 @skills_bp.route('/analyze/<role_id>', methods=['GET'])
 @auth_required
 def analyze_skill_gaps(role_id):
-    """Analyze skill gaps for a target role"""
+    """Analyze skill gaps for a target role with progress tracking"""
     try:
         uid = request.current_user['uid']
         
+        # Import analysis tracker
+        from app.services.analysis_tracker import AnalysisTracker
+        analysis_tracker = AnalysisTracker()
+        
+        # Check if we have existing analysis with progress
+        existing_analysis = analysis_tracker.get_analysis_with_progress(uid, role_id)
+        
+        if existing_analysis:
+            # Return existing analysis with progress data
+            return jsonify({
+                'roleId': role_id,
+                'analysis': existing_analysis['analysis'],
+                'progress': existing_analysis['progress'],
+                'hasProgress': True
+            }), 200
+        
+        # No existing analysis, create new one
         analysis = skills_engine.analyze_skill_gaps(uid, role_id)
         
         if 'error' in analysis:
@@ -285,9 +302,28 @@ def analyze_skill_gaps(role_id):
                 'code': 'ANALYSIS_FAILED'
             }), 400
         
+        # Create initial analysis record
+        analysis_id = analysis_tracker.create_initial_analysis(uid, role_id, analysis)
+        
+        if analysis_id:
+            logger.info(f"Created initial analysis record {analysis_id} for user {uid}, role {role_id}")
+        
         return jsonify({
             'roleId': role_id,
-            'analysis': analysis
+            'analysis': analysis,
+            'progress': {
+                'initialScore': analysis.get('readinessScore', 0),
+                'currentScore': analysis.get('readinessScore', 0),
+                'scoreImprovement': 0,
+                'initialMatchedSkills': len(analysis.get('matchedSkills', [])),
+                'currentMatchedSkills': len(analysis.get('matchedSkills', [])),
+                'skillsImprovement': 0,
+                'completedRoadmapItems': 0,
+                'progressHistory': [],
+                'lastUpdated': None,
+                'createdAt': None
+            },
+            'hasProgress': False
         }), 200
         
     except Exception as e:
