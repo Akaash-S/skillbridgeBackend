@@ -4,6 +4,7 @@ from app.services.roadmap_ai import RoadmapAI
 from app.services.skills_engine import SkillsEngine
 from app.db.firestore import FirestoreService
 from app.utils.validators import validate_required_fields
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ db_service = FirestoreService()
 @auth_required
 def generate_roadmap():
     """
-    Generate AI-powered learning roadmap
+    Generate roadmap using pre-built templates (fast)
     Expected payload: {
         "targetRole": "string",
         "experienceLevel": "beginner|intermediate|advanced" (optional)
@@ -44,25 +45,62 @@ def generate_roadmap():
                 'code': 'VALIDATION_ERROR'
             }), 400
         
-        # Get user's current skills
+        # Use fast template-based generation instead of AI
+        from app.services.roadmap_templates import FastRoadmapGenerator
+        template_generator = FastRoadmapGenerator()
+        
+        # Try to get roadmap template from Firestore first, fallback to hardcoded
+        roadmap_template = template_generator.load_template_from_firestore(target_role)
+        if not roadmap_template:
+            # Fallback to hardcoded template
+            roadmap_template = template_generator.get_roadmap_template(target_role)
+        
+        if not roadmap_template:
+            return jsonify({
+                'error': f'No roadmap template found for role: {target_role}',
+                'code': 'TEMPLATE_NOT_FOUND'
+            }), 404
+        
+        # Get user's current skills to customize the roadmap
         user_skills = skills_engine.get_user_skills(uid)
         
-        # Generate roadmap using AI
-        result = roadmap_ai.generate_roadmap(uid, target_role, user_skills, experience_level)
+        # Customize template based on user's current skills and experience level
+        customized_roadmap = template_generator.customize_roadmap(
+            roadmap_template, 
+            user_skills, 
+            experience_level
+        )
         
-        if 'error' in result:
-            return jsonify({
-                'error': result['error'],
-                'code': 'ROADMAP_GENERATION_FAILED'
-            }), 500
+        # Save the roadmap to database
+        roadmap_data = {
+            'uid': uid,
+            'roleId': target_role,
+            'experienceLevel': experience_level,
+            'milestones': customized_roadmap['milestones'],
+            'generatedAt': datetime.utcnow(),
+            'roadmapVersion': 'template-based',
+            'isActive': True,
+            'totalSkills': sum(len(m.get('skills', [])) for m in customized_roadmap['milestones']),
+            'estimatedWeeks': sum(m.get('estimatedWeeks', 0) for m in customized_roadmap['milestones'])
+        }
         
-        # Format roadmap for frontend compatibility
-        roadmap_data = result.get('roadmap', {})
-        milestones = roadmap_data.get('milestones', [])
+        # Deactivate any existing roadmaps for this user
+        existing_roadmaps = db_service.query_collection(
+            'user_roadmaps',
+            [('uid', '==', uid), ('isActive', '==', True)]
+        )
+        
+        for existing in existing_roadmaps:
+            if existing.get('id'):
+                db_service.update_document('user_roadmaps', existing['id'], {'isActive': False})
+        
+        # Save new roadmap
+        roadmap_id = f"{uid}_{target_role}_{int(datetime.utcnow().timestamp())}"
+        success = db_service.create_document('user_roadmaps', roadmap_id, roadmap_data)
         
         # Convert to frontend RoadmapItem format
         roadmap_items = []
-        for milestone in milestones:
+        for milestone in customized_roadmap['milestones']:
             for skill in milestone.get('skills', []):
                 # Get learning resources for this skill
                 resources = db_service.query_collection('learning_resources', [('skillId', '==', skill['skillId'])])
@@ -90,6 +128,9 @@ def generate_roadmap():
                     'completed': False
                 }
                 roadmap_items.append(roadmap_item)
+        
+        # Log activity
+        db_service.log_user_activity(uid, 'ROADMAP_GENERATED', f'Generated roadmap for {target_role}')
         
         return jsonify(roadmap_items), 201
         
@@ -232,19 +273,27 @@ def update_progress():
 def get_roadmap_templates():
     """Get available roadmap templates"""
     try:
-        # Get all roadmap templates
-        templates = db_service.query_collection('roadmap_templates')
+        from app.services.roadmap_templates import FastRoadmapGenerator
+        template_generator = FastRoadmapGenerator()
+        
+        # Get all templates
+        templates = template_generator.get_all_templates()
         
         # Format templates for response
         formatted_templates = []
-        for template in templates:
+        for role_id, template in templates.items():
+            milestone_count = len(template['milestones'])
+            total_skills = sum(len(m.get('skills', [])) for m in template['milestones'])
+            total_weeks = sum(m.get('estimatedWeeks', 0) for m in template['milestones'])
+            
             formatted_template = {
-                'roleId': template.get('roleId'),
-                'title': template.get('title'),
+                'roleId': role_id,
+                'title': template['title'],
                 'description': template.get('description', ''),
-                'skillCount': len(template.get('skills', [])),
-                'estimatedWeeks': template.get('estimatedWeeks', 8),
-                'difficulty': template.get('difficulty', 'intermediate')
+                'milestoneCount': milestone_count,
+                'skillCount': total_skills,
+                'estimatedWeeks': total_weeks,
+                'difficulty': 'intermediate'  # Default difficulty
             }
             formatted_templates.append(formatted_template)
         
@@ -257,6 +306,123 @@ def get_roadmap_templates():
         return jsonify({
             'error': 'Failed to get roadmap templates',
             'code': 'GET_TEMPLATES_ERROR'
+        }), 500
+
+@roadmap_bp.route('/progress/stats', methods=['GET'])
+@auth_required
+def get_roadmap_progress_stats():
+    """Get roadmap progress statistics for analysis page"""
+    try:
+        uid = request.current_user['uid']
+        
+        # Get active roadmap
+        roadmap = db_service.get_user_roadmap(uid)
+        
+        if not roadmap:
+            return jsonify({
+                'hasRoadmap': False,
+                'progress': None
+            }), 200
+        
+        # Calculate detailed progress statistics
+        milestones = roadmap.get('milestones', [])
+        total_skills = 0
+        completed_skills = 0
+        in_progress_skills = 0
+        total_milestones = len(milestones)
+        completed_milestones = 0
+        
+        # Track skills by difficulty level
+        difficulty_stats = {
+            'beginner': {'total': 0, 'completed': 0},
+            'intermediate': {'total': 0, 'completed': 0},
+            'advanced': {'total': 0, 'completed': 0}
+        }
+        
+        # Recent activity (last 7 days)
+        recent_completions = []
+        
+        for milestone_idx, milestone in enumerate(milestones):
+            skills = milestone.get('skills', [])
+            total_skills += len(skills)
+            
+            milestone_completed = True
+            for skill in skills:
+                # Count by difficulty
+                difficulty = skill.get('targetLevel', 'intermediate')
+                if difficulty in difficulty_stats:
+                    difficulty_stats[difficulty]['total'] += 1
+                
+                if skill.get('completed', False):
+                    completed_skills += 1
+                    if difficulty in difficulty_stats:
+                        difficulty_stats[difficulty]['completed'] += 1
+                    
+                    # Check if completed recently
+                    completed_at = skill.get('completedAt')
+                    if completed_at:
+                        recent_completions.append({
+                            'skillId': skill['skillId'],
+                            'skillName': skill.get('skillName', skill['skillId']),
+                            'completedAt': completed_at,
+                            'milestone': milestone.get('title', f'Milestone {milestone_idx + 1}')
+                        })
+                elif skill.get('inProgress', False):
+                    in_progress_skills += 1
+                    milestone_completed = False
+                else:
+                    milestone_completed = False
+            
+            if milestone_completed and skills:
+                completed_milestones += 1
+        
+        # Calculate progress percentages
+        skill_progress = (completed_skills / total_skills * 100) if total_skills > 0 else 0
+        milestone_progress = (completed_milestones / total_milestones * 100) if total_milestones > 0 else 0
+        
+        # Calculate estimated completion time
+        remaining_skills = total_skills - completed_skills
+        avg_hours_per_skill = 15  # Average estimate
+        estimated_hours_remaining = remaining_skills * avg_hours_per_skill
+        
+        # Get roadmap metadata
+        roadmap_metadata = {
+            'targetRole': roadmap.get('roleId', ''),
+            'generatedAt': roadmap.get('generatedAt', ''),
+            'lastUpdated': roadmap.get('lastUpdated', ''),
+            'version': roadmap.get('roadmapVersion', 'ai-generated')
+        }
+        
+        progress_stats = {
+            'hasRoadmap': True,
+            'progress': {
+                'overall': {
+                    'skillProgress': round(skill_progress, 1),
+                    'milestoneProgress': round(milestone_progress, 1),
+                    'totalSkills': total_skills,
+                    'completedSkills': completed_skills,
+                    'inProgressSkills': in_progress_skills,
+                    'remainingSkills': total_skills - completed_skills,
+                    'totalMilestones': total_milestones,
+                    'completedMilestones': completed_milestones
+                },
+                'byDifficulty': difficulty_stats,
+                'timeEstimate': {
+                    'estimatedHoursRemaining': estimated_hours_remaining,
+                    'estimatedWeeksRemaining': round(estimated_hours_remaining / 10, 1)  # Assuming 10 hours/week
+                },
+                'recentActivity': recent_completions[-5:],  # Last 5 completions
+                'roadmapMetadata': roadmap_metadata
+            }
+        }
+        
+        return jsonify(progress_stats), 200
+        
+    except Exception as e:
+        logger.error(f"Get roadmap progress stats error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get roadmap progress statistics',
+            'code': 'GET_PROGRESS_STATS_ERROR'
         }), 500
 
 @roadmap_bp.route('/reset', methods=['POST'])

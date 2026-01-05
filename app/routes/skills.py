@@ -12,57 +12,67 @@ skills_engine = SkillsEngine()
 @auth_required
 def get_skills():
     """
-    Get skills - either master catalog or user skills
-    Query params:
-    - type: 'master' or 'user' (default: 'user')
-    - category: filter by category (for master skills)
-    - search: search query (for master skills)
+    Get user skills only (requires authentication)
     """
     try:
         uid = request.current_user['uid']
-        skill_type = request.args.get('type', 'user')
+        
+        skills = skills_engine.get_user_skills(uid)
+        
+        # Format user skills for frontend
+        formatted_skills = []
+        for skill in skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'proficiency': skill.get('userLevel', skill.get('level'))
+            }
+            formatted_skills.append(formatted_skill)
+        
+        return jsonify(formatted_skills), 200
+            
+    except Exception as e:
+        logger.error(f"Get user skills error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get user skills',
+            'code': 'GET_SKILLS_ERROR'
+        }), 500
+
+@skills_bp.route('/master', methods=['GET'])
+def get_master_skills():
+    """
+    Get master skills catalog (public endpoint)
+    Query params:
+    - category: filter by category
+    - search: search query
+    """
+    try:
         category = request.args.get('category')
         search = request.args.get('search')
         
-        if skill_type == 'master':
-            if search:
-                skills = skills_engine.search_skills(search)
-            else:
-                skills = skills_engine.get_master_skills(category=category)
-            
-            # Format skills for frontend compatibility
-            formatted_skills = []
-            for skill in skills:
-                formatted_skill = {
-                    'id': skill.get('skillId'),  # Frontend expects 'id' not 'skillId'
-                    'name': skill.get('name'),
-                    'category': skill.get('category')
-                }
-                formatted_skills.append(formatted_skill)
-            
-            return jsonify(formatted_skills), 200
+        if search:
+            skills = skills_engine.search_skills(search)
+        else:
+            skills = skills_engine.get_master_skills(category=category)
         
-        else:  # user skills
-            skills = skills_engine.get_user_skills(uid)
-            
-            # Format user skills for frontend
-            formatted_skills = []
-            for skill in skills:
-                formatted_skill = {
-                    'id': skill.get('skillId'),
-                    'name': skill.get('name'),
-                    'category': skill.get('category'),
-                    'proficiency': skill.get('userLevel', skill.get('level'))
-                }
-                formatted_skills.append(formatted_skill)
-            
-            return jsonify(formatted_skills), 200
+        # Format skills for frontend compatibility
+        formatted_skills = []
+        for skill in skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),  # Frontend expects 'id' not 'skillId'
+                'name': skill.get('name'),
+                'category': skill.get('category')
+            }
+            formatted_skills.append(formatted_skill)
+        
+        return jsonify(formatted_skills), 200
             
     except Exception as e:
-        logger.error(f"Get skills error: {str(e)}")
+        logger.error(f"Get master skills error: {str(e)}")
         return jsonify({
-            'error': 'Failed to get skills',
-            'code': 'GET_SKILLS_ERROR'
+            'error': 'Failed to get master skills',
+            'code': 'GET_MASTER_SKILLS_ERROR'
         }), 500
 
 @skills_bp.route('', methods=['POST'])
