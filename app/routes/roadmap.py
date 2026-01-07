@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from app.middleware.auth_required import auth_required
 from app.services.roadmap_ai import RoadmapAI
 from app.services.skills_engine import SkillsEngine
+from app.services.user_state_manager import UserStateManager
 from app.db.firestore import FirestoreService
 from app.utils.validators import validate_required_fields
 from datetime import datetime
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 roadmap_bp = Blueprint('roadmap', __name__)
 roadmap_ai = RoadmapAI()
 skills_engine = SkillsEngine()
+state_manager = UserStateManager()
 db_service = FirestoreService()
 
 @roadmap_bp.route('/generate', methods=['POST'])
@@ -131,6 +133,19 @@ def generate_roadmap():
         
         # Log activity
         db_service.log_user_activity(uid, 'ROADMAP_GENERATED', f'Generated roadmap for {target_role}')
+        
+        # Save roadmap to user state
+        roadmap_state_data = {
+            'targetRole': target_role,
+            'experienceLevel': experience_level,
+            'totalItems': len(roadmap_items),
+            'completedItems': 0,
+            'progress': 0,
+            'roadmapItems': roadmap_items,
+            'generatedAt': datetime.utcnow(),
+            'lastUpdated': datetime.utcnow()
+        }
+        state_manager.update_roadmap_progress(uid, roadmap_state_data)
         
         return jsonify(roadmap_items), 201
         
@@ -268,6 +283,33 @@ def update_progress():
                     analysis_updated = analysis_tracker.update_analysis_on_completion(uid, role_id, skill_id)
                     if analysis_updated:
                         logger.info(f"Updated analysis for user {uid} after completing skill {skill_id}")
+        
+        # Update roadmap progress in user state
+        user_state = state_manager.get_user_state(uid)
+        if user_state and user_state.get('roadmapProgress'):
+            roadmap_progress = user_state['roadmapProgress']
+            roadmap_items = roadmap_progress.get('roadmapItems', [])
+            
+            # Update the specific item
+            for item in roadmap_items:
+                if item.get('skillId') == skill_id:
+                    item['completed'] = completed
+                    break
+            
+            # Recalculate progress
+            total_items = len(roadmap_items)
+            completed_items = sum(1 for item in roadmap_items if item.get('completed', False))
+            progress = (completed_items / total_items * 100) if total_items > 0 else 0
+            
+            # Update roadmap progress
+            roadmap_progress.update({
+                'completedItems': completed_items,
+                'progress': round(progress, 1),
+                'roadmapItems': roadmap_items,
+                'lastUpdated': datetime.utcnow()
+            })
+            
+            state_manager.update_roadmap_progress(uid, roadmap_progress)
         
         return jsonify({
             'message': 'Roadmap progress updated successfully',

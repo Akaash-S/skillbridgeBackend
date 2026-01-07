@@ -64,9 +64,12 @@ class SkillsEngine:
             enriched_skills = []
             for user_skill in user_skills:
                 skill_id = user_skill.get('skillId')
-                master_skill = self.db_service.get_document('skills_master', skill_id)
                 
-                if master_skill:
+                # Find master skill by skillId field (not document ID)
+                master_skill_docs = self.db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+                
+                if master_skill_docs:
+                    master_skill = master_skill_docs[0]
                     enriched_skill = {
                         **master_skill,
                         'userLevel': user_skill.get('level'),
@@ -75,6 +78,8 @@ class SkillsEngine:
                         'lastUpdatedAt': user_skill.get('lastUpdatedAt')
                     }
                     enriched_skills.append(enriched_skill)
+                else:
+                    logger.warning(f"Master skill not found for skillId: {skill_id}")
             
             return enriched_skills
             
@@ -85,40 +90,58 @@ class SkillsEngine:
     def add_user_skill(self, uid: str, skill_id: str, level: str, confidence: str = 'medium') -> bool:
         """Add or update a skill for a user"""
         try:
-            # Validate skill exists in master catalog
-            master_skill = self.db_service.get_document('skills_master', skill_id)
-            if not master_skill:
+            # Find skill by skillId field (not document ID)
+            skills = self.db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+            
+            if not skills:
                 logger.warning(f"Skill not found in master catalog: {skill_id}")
                 return False
+            
+            master_skill = skills[0]  # Get the first (should be only) match
+            logger.info(f"Found master skill: {master_skill.get('name')} (skillId: {skill_id}, docId: {master_skill.get('id')})")
             
             # Validate level
             valid_levels = master_skill.get('levels', ['beginner', 'intermediate', 'advanced'])
             if level not in valid_levels:
-                logger.warning(f"Invalid level {level} for skill {skill_id}")
+                logger.warning(f"Invalid level {level} for skill {skill_id}. Valid levels: {valid_levels}")
                 return False
             
             # Create composite key for user_skills
             user_skill_id = f"{uid}_{skill_id}"
             
-            user_skill_data = {
-                'uid': uid,
-                'skillId': skill_id,
-                'level': level,
-                'confidence': confidence,
-                'source': 'self-reported',
-                'lastUpdatedAt': datetime.utcnow()
-            }
-            
-            success = self.db_service.create_document('user_skills', user_skill_id, user_skill_data)
+            # Check if skill already exists for this user
+            existing_skill = self.db_service.get_document('user_skills', user_skill_id)
+            if existing_skill:
+                logger.info(f"Skill {skill_id} already exists for user {uid}, updating instead")
+                # Update existing skill
+                update_data = {
+                    'level': level,
+                    'confidence': confidence,
+                    'lastUpdatedAt': datetime.utcnow()
+                }
+                success = self.db_service.update_document('user_skills', user_skill_id, update_data)
+            else:
+                # Create new skill
+                user_skill_data = {
+                    'uid': uid,
+                    'skillId': skill_id,
+                    'level': level,
+                    'confidence': confidence,
+                    'source': 'self-reported',
+                    'createdAt': datetime.utcnow(),
+                    'lastUpdatedAt': datetime.utcnow()
+                }
+                success = self.db_service.create_document('user_skills', user_skill_id, user_skill_data)
             
             if success:
                 # Log activity
                 skill_name = master_skill.get('name', skill_id)
-                self.db_service.log_user_activity(
-                    uid, 
-                    'SKILL_ADDED', 
-                    f'Added skill: {skill_name} ({level})'
-                )
+                action = 'SKILL_UPDATED' if existing_skill else 'SKILL_ADDED'
+                message = f'{"Updated" if existing_skill else "Added"} skill: {skill_name} ({level})'
+                self.db_service.log_user_activity(uid, action, message)
+                logger.info(f"Successfully {'updated' if existing_skill else 'added'} skill {skill_id} for user {uid}")
+            else:
+                logger.error(f"Failed to {'update' if existing_skill else 'create'} user skill document")
             
             return success
             
@@ -248,9 +271,10 @@ class SkillsEngine:
                             'gap': required_level_score - user_level_score
                         })
                 else:
-                    # Get skill details from master catalog
-                    master_skill = self.db_service.get_document('skills_master', skill_id)
-                    if master_skill:
+                    # Get skill details from master catalog by skillId field
+                    skill_docs = self.db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+                    if skill_docs:
+                        master_skill = skill_docs[0]
                         missing_skills.append({
                             'skillId': skill_id,
                             'skillName': master_skill['name'],
@@ -304,17 +328,22 @@ class SkillsEngine:
     def get_related_skills(self, skill_id: str) -> List[Dict]:
         """Get skills related to a given skill"""
         try:
-            master_skill = self.db_service.get_document('skills_master', skill_id)
-            if not master_skill:
+            # Find skill by skillId field (not document ID)
+            skills = self.db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+            
+            if not skills:
+                logger.warning(f"Skill not found: {skill_id}")
                 return []
             
+            master_skill = skills[0]
             related_skill_ids = master_skill.get('relatedSkills', [])
             related_skills = []
             
             for related_id in related_skill_ids:
-                related_skill = self.db_service.get_document('skills_master', related_id)
-                if related_skill:
-                    related_skills.append(related_skill)
+                # Find related skill by skillId field
+                related_skill_docs = self.db_service.query_collection('skills_master', [('skillId', '==', related_id)])
+                if related_skill_docs:
+                    related_skills.append(related_skill_docs[0])
             
             return related_skills
             

@@ -1,12 +1,14 @@
 from flask import Blueprint, request, jsonify
 from app.middleware.auth_required import auth_required
 from app.services.skills_engine import SkillsEngine
+from app.services.user_state_manager import UserStateManager
 from app.utils.validators import validate_required_fields
 import logging
 
 logger = logging.getLogger(__name__)
 skills_bp = Blueprint('skills', __name__)
 skills_engine = SkillsEngine()
+state_manager = UserStateManager()
 
 @skills_bp.route('', methods=['GET'])
 @auth_required
@@ -40,9 +42,10 @@ def get_skills():
         }), 500
 
 @skills_bp.route('/master', methods=['GET'])
+@auth_required
 def get_master_skills():
     """
-    Get master skills catalog (public endpoint)
+    Get master skills catalog (requires authentication)
     Query params:
     - category: filter by category
     - search: search query
@@ -90,8 +93,12 @@ def add_skill():
         uid = request.current_user['uid']
         data = request.get_json()
         
+        # Debug logging
+        logger.info(f"Add skill request - UID: {uid}, Data: {data}")
+        
         # Validate required fields
         if not validate_required_fields(data, ['skillId', 'level']):
+            logger.error(f"Missing required fields in data: {data}")
             return jsonify({
                 'error': 'Missing required fields: skillId, level',
                 'code': 'VALIDATION_ERROR'
@@ -101,9 +108,12 @@ def add_skill():
         level = data['level']
         confidence = data.get('confidence', 'medium')
         
+        logger.info(f"Parsed values - skillId: '{skill_id}', level: '{level}', confidence: '{confidence}'")
+        
         # Validate level
         valid_levels = ['beginner', 'intermediate', 'advanced']
         if level not in valid_levels:
+            logger.error(f"Invalid level '{level}' not in {valid_levels}")
             return jsonify({
                 'error': f'Invalid level. Must be one of: {", ".join(valid_levels)}',
                 'code': 'VALIDATION_ERROR'
@@ -112,19 +122,50 @@ def add_skill():
         # Validate confidence
         valid_confidence = ['low', 'medium', 'high']
         if confidence not in valid_confidence:
+            logger.error(f"Invalid confidence '{confidence}' not in {valid_confidence}")
             return jsonify({
                 'error': f'Invalid confidence. Must be one of: {", ".join(valid_confidence)}',
                 'code': 'VALIDATION_ERROR'
             }), 400
         
+        # Check if skill exists in master catalog before calling skills_engine
+        from app.db.firestore import FirestoreService
+        db_service = FirestoreService()
+        master_skill = db_service.get_document('skills_master', skill_id)
+        
+        if not master_skill:
+            logger.error(f"Skill '{skill_id}' not found in skills_master collection")
+            return jsonify({
+                'error': f'Skill "{skill_id}" not found in master catalog',
+                'code': 'SKILL_NOT_FOUND'
+            }), 400
+        
+        logger.info(f"Master skill found: {master_skill.get('name')} (ID: {skill_id})")
+        
         # Add skill
         success = skills_engine.add_user_skill(uid, skill_id, level, confidence)
         if not success:
+            logger.error(f"skills_engine.add_user_skill returned False for skill '{skill_id}'")
             return jsonify({
-                'error': 'Failed to add skill. Skill may not exist or already added.',
+                'error': 'Failed to add skill. Skill may already be added.',
                 'code': 'ADD_SKILL_FAILED'
             }), 400
         
+        # Update user state with new skills
+        user_skills = skills_engine.get_user_skills(uid)
+        formatted_skills = []
+        for skill in user_skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'proficiency': skill.get('userLevel', skill.get('level'))
+            }
+            formatted_skills.append(formatted_skill)
+        
+        state_manager.update_user_skills(uid, formatted_skills)
+        
+        logger.info(f"Successfully added skill '{skill_id}' for user {uid}")
         return jsonify({
             'message': 'Skill added successfully',
             'skillId': skill_id,
@@ -194,6 +235,20 @@ def update_skill(skill_id):
                 'code': 'UPDATE_SKILL_FAILED'
             }), 400
         
+        # Update user state with updated skills
+        user_skills = skills_engine.get_user_skills(uid)
+        formatted_skills = []
+        for skill in user_skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'proficiency': skill.get('userLevel', skill.get('level'))
+            }
+            formatted_skills.append(formatted_skill)
+        
+        state_manager.update_user_skills(uid, formatted_skills)
+        
         return jsonify({
             'message': 'Skill updated successfully',
             'skillId': skill_id,
@@ -220,6 +275,20 @@ def remove_skill(skill_id):
                 'error': 'Failed to remove skill. Skill may not exist in user profile.',
                 'code': 'REMOVE_SKILL_FAILED'
             }), 400
+        
+        # Update user state with remaining skills
+        user_skills = skills_engine.get_user_skills(uid)
+        formatted_skills = []
+        for skill in user_skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'proficiency': skill.get('userLevel', skill.get('level'))
+            }
+            formatted_skills.append(formatted_skill)
+        
+        state_manager.update_user_skills(uid, formatted_skills)
         
         return jsonify({
             'message': 'Skill removed successfully',
@@ -307,6 +376,9 @@ def analyze_skill_gaps(role_id):
         
         if analysis_id:
             logger.info(f"Created initial analysis record {analysis_id} for user {uid}, role {role_id}")
+        
+        # Save analysis to user state
+        state_manager.update_analysis_data(uid, analysis)
         
         return jsonify({
             'roleId': role_id,
