@@ -10,7 +10,7 @@ def create_app():
     app.config.from_object(Config)
     
     # Enable CORS for frontend
-    CORS(app, origins=["http://localhost:8080", "https://skillbridge.app"])
+    CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080", "https://skillbridge.app"])
     
     # Initialize Firebase and Firestore
     init_firebase()
