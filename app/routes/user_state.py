@@ -42,12 +42,13 @@ def get_user_state():
 @auth_required
 def get_dashboard_data():
     """
-    Get all data needed for user dashboard
+    Get all data needed for user dashboard with optimized queries
     """
     try:
         uid = request.current_user['uid']
         
-        dashboard_data = state_manager.get_user_dashboard_data(uid)
+        # Get comprehensive dashboard data with skill-role matching
+        dashboard_data = state_manager.get_optimized_dashboard_data(uid)
         
         return jsonify({
             'dashboardData': dashboard_data
@@ -58,6 +59,30 @@ def get_dashboard_data():
         return jsonify({
             'error': 'Failed to get dashboard data',
             'code': 'GET_DASHBOARD_ERROR'
+        }), 500
+
+@user_state_bp.route('/initial-load', methods=['GET'])
+@auth_required
+def get_initial_load_data():
+    """
+    Get all initial data needed for the application in one request
+    Optimized for fast loading of dashboard, skills, roles, and analysis
+    """
+    try:
+        uid = request.current_user['uid']
+        
+        # Get all data in parallel
+        initial_data = state_manager.get_initial_load_data(uid)
+        
+        return jsonify({
+            'initialData': initial_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get initial load data error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get initial load data',
+            'code': 'GET_INITIAL_LOAD_ERROR'
         }), 500
 
 @user_state_bp.route('/skills', methods=['PUT'])

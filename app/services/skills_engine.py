@@ -1,5 +1,5 @@
 from app.db.firestore import FirestoreService
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import logging
 from datetime import datetime
 
@@ -86,6 +86,102 @@ class SkillsEngine:
         except Exception as e:
             logger.error(f"Error getting user skills: {str(e)}")
             return []
+            
+    def analyze_skills_for_role(self, uid: str, role_id: str) -> Dict[str, Any]:
+        """Analyze user skills against a specific role's requirements"""
+        try:
+            # Get user skills
+            user_skills = self.get_user_skills(uid)
+            
+            # Get role requirements
+            role_docs = self.db_service.query_collection('job_roles', [('roleId', '==', role_id)])
+            if not role_docs:
+                logger.warning(f"Role not found: {role_id}")
+                return None
+            
+            role = role_docs[0]
+            required_skills = role.get('requiredSkills', [])
+            
+            if not required_skills:
+                return {
+                    'roleTitle': role.get('title', 'Unknown Role'),
+                    'totalRequired': 0,
+                    'matchedSkills': [],
+                    'partialSkills': [],
+                    'missingSkills': [],
+                    'readinessScore': 100
+                }
+            
+            # Create user skill lookup
+            user_skill_map = {}
+            for skill in user_skills:
+                user_skill_map[skill.get('skillId')] = {
+                    'id': skill.get('skillId'),
+                    'name': skill.get('name'),
+                    'category': skill.get('category'),
+                    'proficiency': skill.get('userLevel', 'beginner'),
+                    'confidence': skill.get('userConfidence', 'medium')
+                }
+            
+            # Analyze each required skill
+            matched_skills = []
+            partial_skills = []
+            missing_skills = []
+            
+            proficiency_values = {'beginner': 1, 'intermediate': 2, 'advanced': 3}
+            
+            for req_skill in required_skills:
+                skill_id = req_skill.get('skillId')
+                required_level = req_skill.get('minProficiency', 'intermediate')
+                
+                if skill_id in user_skill_map:
+                    user_skill = user_skill_map[skill_id]
+                    user_level = user_skill['proficiency']
+                    
+                    if proficiency_values.get(user_level, 1) >= proficiency_values.get(required_level, 2):
+                        matched_skills.append({
+                            'skill': user_skill,
+                            'required': required_level,
+                            'userLevel': user_level
+                        })
+                    else:
+                        partial_skills.append({
+                            'skill': user_skill,
+                            'required': required_level,
+                            'userLevel': user_level,
+                            'gap': f"{user_level} → {required_level}"
+                        })
+                else:
+                    # Find skill name from master skills
+                    master_skills = self.db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+                    skill_name = master_skills[0].get('name', skill_id.replace('-', ' ').title()) if master_skills else skill_id.replace('-', ' ').title()
+                    
+                    missing_skills.append({
+                        'skillId': skill_id,
+                        'skillName': skill_name,
+                        'required': required_level
+                    })
+            
+            # Calculate readiness score
+            total_required = len(required_skills)
+            readiness_score = ((len(matched_skills) + len(partial_skills) * 0.5) / total_required * 100) if total_required > 0 else 100
+            
+            return {
+                'roleTitle': role.get('title', 'Unknown Role'),
+                'roleId': role_id,
+                'totalRequired': total_required,
+                'matchedSkills': matched_skills,
+                'partialSkills': partial_skills,
+                'missingSkills': missing_skills,
+                'readinessScore': round(readiness_score, 1),
+                'matchedCount': len(matched_skills),
+                'partialCount': len(partial_skills),
+                'missingCount': len(missing_skills)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing skills for role {role_id}: {str(e)}")
+            return None
     
     def add_user_skill(self, uid: str, skill_id: str, level: str, confidence: str = 'medium') -> bool:
         """Add or update a skill for a user"""

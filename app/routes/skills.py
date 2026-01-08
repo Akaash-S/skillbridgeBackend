@@ -41,41 +41,122 @@ def get_skills():
             'code': 'GET_SKILLS_ERROR'
         }), 500
 
-@skills_bp.route('/master', methods=['GET'])
+@skills_bp.route('/with-role-analysis', methods=['GET'])
 @auth_required
-def get_master_skills():
+def get_skills_with_role_analysis():
     """
-    Get master skills catalog (requires authentication)
+    Get user skills with role matching analysis
     Query params:
-    - category: filter by category
-    - search: search query
+    - roleId: target role ID for skill gap analysis
     """
     try:
-        category = request.args.get('category')
-        search = request.args.get('search')
+        uid = request.current_user['uid']
+        role_id = request.args.get('roleId')
         
-        if search:
-            skills = skills_engine.search_skills(search)
-        else:
-            skills = skills_engine.get_master_skills(category=category)
+        # Get user skills
+        user_skills = skills_engine.get_user_skills(uid)
         
-        # Format skills for frontend compatibility
+        # Format user skills for frontend
         formatted_skills = []
-        for skill in skills:
+        for skill in user_skills:
             formatted_skill = {
-                'id': skill.get('skillId'),  # Frontend expects 'id' not 'skillId'
+                'id': skill.get('skillId'),
                 'name': skill.get('name'),
-                'category': skill.get('category')
+                'category': skill.get('category'),
+                'proficiency': skill.get('userLevel', skill.get('level')),
+                'confidence': skill.get('userConfidence', 'medium')
             }
             formatted_skills.append(formatted_skill)
         
-        return jsonify(formatted_skills), 200
+        result = {
+            'userSkills': formatted_skills,
+            'skillsCount': len(formatted_skills)
+        }
+        
+        # Add role analysis if roleId provided
+        if role_id:
+            role_analysis = skills_engine.analyze_skills_for_role(uid, role_id)
+            result['roleAnalysis'] = role_analysis
+        
+        return jsonify(result), 200
             
     except Exception as e:
-        logger.error(f"Get master skills error: {str(e)}")
+        logger.error(f"Get skills with role analysis error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get skills with role analysis',
+            'code': 'GET_SKILLS_ROLE_ANALYSIS_ERROR'
+        }), 500
+
+@skills_bp.route('/master/paginated', methods=['GET'])
+@auth_required
+def get_master_skills_paginated():
+    """
+    Get master skills catalog with pagination and search
+    Query params:
+    - page: page number (default: 1)
+    - limit: items per page (default: 20)
+    - category: filter by category
+    - search: search query
+    - exclude_user_skills: exclude skills user already has (default: true)
+    """
+    try:
+        uid = request.current_user['uid']
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        category = request.args.get('category')
+        search = request.args.get('search')
+        exclude_user_skills = request.args.get('exclude_user_skills', 'true').lower() == 'true'
+        
+        # Get user skills if we need to exclude them
+        user_skill_ids = set()
+        if exclude_user_skills:
+            user_skills = skills_engine.get_user_skills(uid)
+            user_skill_ids = {skill.get('skillId') for skill in user_skills}
+        
+        # Get master skills with filtering
+        if search:
+            all_skills = skills_engine.search_skills(search, limit=1000)  # Get more for filtering
+        else:
+            all_skills = skills_engine.get_master_skills(category=category)
+        
+        # Filter out user skills if requested
+        if exclude_user_skills:
+            all_skills = [skill for skill in all_skills if skill.get('skillId') not in user_skill_ids]
+        
+        # Paginate
+        total_count = len(all_skills)
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_skills = all_skills[start_idx:end_idx]
+        
+        # Format skills for frontend
+        formatted_skills = []
+        for skill in paginated_skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'description': skill.get('description', '')
+            }
+            formatted_skills.append(formatted_skill)
+        
+        return jsonify({
+            'skills': formatted_skills,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total_count,
+                'totalPages': (total_count + limit - 1) // limit,
+                'hasNext': end_idx < total_count,
+                'hasPrev': page > 1
+            }
+        }), 200
+            
+    except Exception as e:
+        logger.error(f"Get paginated master skills error: {str(e)}")
         return jsonify({
             'error': 'Failed to get master skills',
-            'code': 'GET_MASTER_SKILLS_ERROR'
+            'code': 'GET_MASTER_SKILLS_PAGINATED_ERROR'
         }), 500
 
 @skills_bp.route('', methods=['POST'])
@@ -152,18 +233,9 @@ def add_skill():
             }), 400
         
         # Update user state with new skills
-        user_skills = skills_engine.get_user_skills(uid)
-        formatted_skills = []
-        for skill in user_skills:
-            formatted_skill = {
-                'id': skill.get('skillId'),
-                'name': skill.get('name'),
-                'category': skill.get('category'),
-                'proficiency': skill.get('userLevel', skill.get('level'))
-            }
-            formatted_skills.append(formatted_skill)
-        
-        state_manager.update_user_skills(uid, formatted_skills)
+        success_sync = state_manager.sync_user_state_with_database(uid)
+        if not success_sync:
+            logger.warning(f"Failed to sync user state after adding skill for user {uid}")
         
         logger.info(f"Successfully added skill '{skill_id}' for user {uid}")
         return jsonify({
@@ -236,18 +308,9 @@ def update_skill(skill_id):
             }), 400
         
         # Update user state with updated skills
-        user_skills = skills_engine.get_user_skills(uid)
-        formatted_skills = []
-        for skill in user_skills:
-            formatted_skill = {
-                'id': skill.get('skillId'),
-                'name': skill.get('name'),
-                'category': skill.get('category'),
-                'proficiency': skill.get('userLevel', skill.get('level'))
-            }
-            formatted_skills.append(formatted_skill)
-        
-        state_manager.update_user_skills(uid, formatted_skills)
+        success_sync = state_manager.sync_user_state_with_database(uid)
+        if not success_sync:
+            logger.warning(f"Failed to sync user state after updating skill for user {uid}")
         
         return jsonify({
             'message': 'Skill updated successfully',
@@ -276,19 +339,10 @@ def remove_skill(skill_id):
                 'code': 'REMOVE_SKILL_FAILED'
             }), 400
         
-        # Update user state with remaining skills
-        user_skills = skills_engine.get_user_skills(uid)
-        formatted_skills = []
-        for skill in user_skills:
-            formatted_skill = {
-                'id': skill.get('skillId'),
-                'name': skill.get('name'),
-                'category': skill.get('category'),
-                'proficiency': skill.get('userLevel', skill.get('level'))
-            }
-            formatted_skills.append(formatted_skill)
-        
-        state_manager.update_user_skills(uid, formatted_skills)
+        # Sync user state with database after skill removal
+        success_sync = state_manager.sync_user_state_with_database(uid)
+        if not success_sync:
+            logger.warning(f"Failed to sync user state after removing skill for user {uid}")
         
         return jsonify({
             'message': 'Skill removed successfully',

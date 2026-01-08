@@ -48,7 +48,97 @@ def get_job_roles():
         logger.error(f"Get job roles error: {str(e)}")
         return jsonify({
             'error': 'Failed to get job roles',
-            'code': 'GET_ROLES_ERROR'
+            'code': 'GET_JOB_ROLES_ERROR'
+        }), 500
+        
+@roles_bp.route('/with-skill-match', methods=['GET'])
+@auth_required
+def get_roles_with_skill_match():
+    """
+    Get job roles with skill matching analysis for the current user
+    Query params:
+    - category: filter by category (optional)
+    - limit: number of roles to return (default: 20)
+    """
+    try:
+        uid = request.current_user['uid']
+        category = request.args.get('category')
+        limit = int(request.args.get('limit', 20))
+        
+        # Build filters
+        filters = []
+        if category:
+            filters.append(('category', '==', category))
+        
+        # Get job roles from Firestore
+        job_roles = db_service.query_collection('job_roles', filters)
+        
+        # Get user skills for matching
+        user_skills = db_service.get_user_skills(uid)
+        user_skill_map = {skill.get('skillId'): skill.get('level', 'beginner') for skill in user_skills}
+        
+        # Format roles with skill matching
+        formatted_roles = []
+        proficiency_values = {'beginner': 1, 'intermediate': 2, 'advanced': 3}
+        
+        for role in job_roles[:limit]:  # Limit results
+            required_skills = role.get('requiredSkills', [])
+            
+            # Calculate skill match percentage
+            if required_skills and user_skills:
+                matched_count = 0
+                partial_count = 0
+                
+                for req_skill in required_skills:
+                    skill_id = req_skill.get('skillId')
+                    required_level = req_skill.get('minProficiency', 'intermediate')
+                    
+                    if skill_id in user_skill_map:
+                        user_level = user_skill_map[skill_id]
+                        if proficiency_values.get(user_level, 1) >= proficiency_values.get(required_level, 2):
+                            matched_count += 1
+                        else:
+                            partial_count += 1
+                
+                total_required = len(required_skills)
+                match_percentage = ((matched_count + partial_count * 0.5) / total_required * 100) if total_required > 0 else 0
+            else:
+                match_percentage = 0
+                matched_count = 0
+                partial_count = 0
+                total_required = len(required_skills)
+            
+            formatted_role = {
+                'id': role.get('roleId'),
+                'title': role.get('title'),
+                'description': role.get('description'),
+                'requiredSkills': required_skills,
+                'category': role.get('category'),
+                'avgSalary': role.get('avgSalary'),
+                'demand': role.get('demand'),
+                'skillMatch': {
+                    'percentage': round(match_percentage, 1),
+                    'matched': matched_count,
+                    'partial': partial_count,
+                    'missing': total_required - matched_count - partial_count,
+                    'total': total_required
+                }
+            }
+            formatted_roles.append(formatted_role)
+        
+        # Sort by skill match percentage (highest first)
+        formatted_roles.sort(key=lambda x: x['skillMatch']['percentage'], reverse=True)
+        
+        return jsonify({
+            'roles': formatted_roles,
+            'userSkillsCount': len(user_skills)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get roles with skill match error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get roles with skill matching',
+            'code': 'GET_ROLES_SKILL_MATCH_ERROR'
         }), 500
 
 @roles_bp.route('/<role_id>', methods=['GET'])
@@ -159,6 +249,11 @@ def select_target_role():
                 'error': 'Failed to save target role',
                 'code': 'SAVE_TARGET_ROLE_FAILED'
             }), 500
+        
+        # Sync user state with database to ensure consistency
+        sync_success = state_manager.sync_user_state_with_database(uid)
+        if not sync_success:
+            logger.warning(f"Failed to sync user state after role selection for user {uid}")
         
         return jsonify({
             'message': 'Target role selected successfully',
