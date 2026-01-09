@@ -260,13 +260,14 @@ def update_progress():
                 'code': 'VALIDATION_ERROR'
             }), 400
         
-        # Update progress
+        # Update progress (the roadmap_ai service will find the correct milestone)
         success = roadmap_ai.update_roadmap_progress(uid, milestone_index, skill_id, completed)
         
         if not success:
             return jsonify({
-                'error': 'Failed to update roadmap progress',
-                'code': 'UPDATE_PROGRESS_FAILED'
+                'error': 'Failed to update roadmap progress. Skill may not exist in roadmap.',
+                'code': 'UPDATE_PROGRESS_FAILED',
+                'skillId': skill_id
             }), 400
         
         # If skill was completed, update analysis

@@ -314,27 +314,31 @@ Generate a comprehensive roadmap focusing on practical, industry-relevant skills
             roadmap = roadmaps[0]
             milestones = roadmap.get('milestones', [])
             
-            if milestone_index >= len(milestones):
-                logger.warning(f"Invalid milestone index: {milestone_index}")
-                return False
-            
-            # Update skill completion status
-            milestone = milestones[milestone_index]
-            skills = milestone.get('skills', [])
-            
+            # Find the correct milestone for this skill (ignore the provided milestone_index)
             skill_updated = False
-            for skill in skills:
-                if skill.get('skillId') == skill_id:
-                    skill['completed'] = completed
-                    skill['status'] = 'completed' if completed else 'in_progress'
-                    skill_updated = True
+            actual_milestone_index = -1
+            
+            for idx, milestone in enumerate(milestones):
+                skills = milestone.get('skills', [])
+                for skill in skills:
+                    if skill.get('skillId') == skill_id:
+                        skill['completed'] = completed
+                        skill['status'] = 'completed' if completed else 'in_progress'
+                        if completed:
+                            skill['completedAt'] = datetime.utcnow()
+                        skill_updated = True
+                        actual_milestone_index = idx
+                        break
+                if skill_updated:
                     break
             
             if not skill_updated:
-                logger.warning(f"Skill not found in milestone: {skill_id}")
+                logger.warning(f"Skill not found in any milestone: {skill_id}")
                 return False
             
             # Check if milestone is completed
+            milestone = milestones[actual_milestone_index]
+            skills = milestone.get('skills', [])
             milestone_completed = all(skill.get('completed', False) for skill in skills)
             milestone['completed'] = milestone_completed
             
@@ -343,7 +347,8 @@ Generate a comprehensive roadmap focusing on practical, industry-relevant skills
             roadmap_id = roadmap.get('id')  # Assuming ID is stored in document
             if roadmap_id:
                 success = self.db_service.update_document('user_roadmaps', roadmap_id, {
-                    'milestones': milestones
+                    'milestones': milestones,
+                    'lastUpdated': datetime.utcnow()
                 })
                 
                 if success:
@@ -354,7 +359,7 @@ Generate a comprehensive roadmap focusing on practical, industry-relevant skills
                     self.db_service.log_user_activity(
                         uid,
                         'ROADMAP_PROGRESS',
-                        f'{action.title()} skill: {skill_name}'
+                        f'{action.title()} skill: {skill_name} (Milestone {actual_milestone_index + 1})'
                     )
                 
                 return success
