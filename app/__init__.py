@@ -27,6 +27,8 @@ def create_app():
     from app.routes.activity import activity_bp
     from app.routes.settings import settings_bp
     from app.routes.user_state import user_state_bp
+    from app.routes.courses import courses_bp
+    from app.routes.mfa import mfa_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(users_bp, url_prefix='/users')
@@ -38,6 +40,8 @@ def create_app():
     app.register_blueprint(activity_bp, url_prefix='/activity')
     app.register_blueprint(settings_bp, url_prefix='/settings')
     app.register_blueprint(user_state_bp, url_prefix='/user-state')
+    app.register_blueprint(courses_bp, url_prefix='/courses')
+    app.register_blueprint(mfa_bp, url_prefix='/mfa')
     
     @app.route('/health')
     def health_check():

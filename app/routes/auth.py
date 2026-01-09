@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.services.firebase_service import FirebaseAuthService, auth_required
 from app.db.firestore import FirestoreService
+from app.services.mfa_service import mfa_service
 from app.utils.validators import validate_required_fields
 from datetime import datetime
 import logging
@@ -41,6 +42,21 @@ def login():
         current_time = datetime.utcnow()
         
         if existing_user:
+            # Check if MFA is enabled for this user
+            user_mfa = db_service.get_document('user_mfa', uid)
+            
+            if user_mfa and user_mfa.get('enabled', False):
+                # MFA is enabled, require MFA verification
+                mfa_token = mfa_service.create_mfa_session(uid)
+                
+                return jsonify({
+                    'message': 'MFA verification required',
+                    'mfa_required': True,
+                    'mfa_token': mfa_token,
+                    'recovery_codes_available': mfa_service.get_backup_codes_count(user_mfa) > 0
+                }), 200
+            
+            # No MFA required, proceed with normal login
             # Update last login time
             db_service.update_document('users', uid, {
                 'lastLoginAt': current_time
@@ -52,7 +68,8 @@ def login():
             return jsonify({
                 'message': 'Login successful',
                 'user': existing_user,
-                'isNewUser': False
+                'isNewUser': False,
+                'mfa_required': False
             }), 200
         else:
             # Create new user profile
@@ -86,7 +103,8 @@ def login():
             return jsonify({
                 'message': 'User created successfully',
                 'user': new_user,
-                'isNewUser': True
+                'isNewUser': True,
+                'mfa_required': False
             }), 201
             
     except Exception as e:
@@ -94,6 +112,112 @@ def login():
         return jsonify({
             'error': 'Internal server error during login',
             'code': 'LOGIN_ERROR'
+        }), 500
+
+@auth_bp.route('/login/mfa', methods=['POST'])
+def complete_mfa_login():
+    """
+    Complete login after MFA verification
+    Expected payload: { "mfa_token": "token", "code": "123456", "is_recovery_code": false }
+    """
+    try:
+        data = request.get_json()
+        
+        if not validate_required_fields(data, ['mfa_token', 'code']):
+            return jsonify({
+                'error': 'Missing required fields: mfa_token and code',
+                'code': 'VALIDATION_ERROR'
+            }), 400
+        
+        mfa_token = data['mfa_token']
+        verification_code = data['code']
+        is_recovery_code = data.get('is_recovery_code', False)
+        
+        # Verify MFA session
+        uid = mfa_service.verify_mfa_session(mfa_token)
+        if not uid:
+            return jsonify({
+                'error': 'Invalid or expired MFA token',
+                'code': 'INVALID_MFA_TOKEN'
+            }), 400
+        
+        # Get user MFA data
+        user_mfa = db_service.get_document('user_mfa', uid)
+        if not user_mfa or not user_mfa.get('enabled', False):
+            return jsonify({
+                'error': 'MFA not enabled for this account',
+                'code': 'MFA_NOT_ENABLED'
+            }), 400
+        
+        verification_successful = False
+        
+        if is_recovery_code:
+            # Verify recovery code
+            for recovery_code in user_mfa.get('recovery_codes', []):
+                if not recovery_code.get('used', False):
+                    if mfa_service.verify_recovery_code(verification_code, recovery_code['hash']):
+                        # Mark recovery code as used
+                        user_mfa = mfa_service.mark_recovery_code_used(user_mfa, verification_code)
+                        user_mfa['updated_at'] = datetime.utcnow().isoformat()
+                        
+                        # Update in database
+                        db_service.update_document('user_mfa', uid, user_mfa)
+                        
+                        verification_successful = True
+                        
+                        # Log recovery code usage
+                        db_service.log_user_activity(uid, 'MFA_RECOVERY_CODE_USED', 'Recovery code used for login')
+                        break
+        else:
+            # Verify TOTP code
+            secret = mfa_service.decrypt_secret(user_mfa['secret'])
+            verification_successful = mfa_service.verify_totp_code(secret, verification_code)
+        
+        if not verification_successful:
+            # Log failed attempt
+            db_service.log_user_activity(uid, 'MFA_LOGIN_FAILED', f'Failed MFA login attempt')
+            
+            return jsonify({
+                'error': 'Invalid verification code',
+                'code': 'INVALID_VERIFICATION_CODE'
+            }), 400
+        
+        # MFA verification successful, complete login
+        user_profile = db_service.get_document('users', uid)
+        if not user_profile:
+            return jsonify({
+                'error': 'User profile not found',
+                'code': 'USER_NOT_FOUND'
+            }), 404
+        
+        # Update last login time and MFA usage
+        current_time = datetime.utcnow()
+        db_service.update_document('users', uid, {
+            'lastLoginAt': current_time
+        })
+        
+        user_mfa['last_used_at'] = current_time.isoformat()
+        db_service.update_document('user_mfa', uid, user_mfa)
+        
+        # Log successful login
+        db_service.log_user_activity(uid, 'LOGIN_MFA_SUCCESS', 'User logged in with MFA')
+        
+        # Get remaining recovery codes count
+        remaining_codes = mfa_service.get_backup_codes_count(user_mfa)
+        
+        return jsonify({
+            'message': 'Login successful',
+            'user': user_profile,
+            'isNewUser': False,
+            'mfa_verified': True,
+            'remaining_recovery_codes': remaining_codes
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"MFA login error: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error during MFA login',
+            'code': 'MFA_LOGIN_ERROR'
         }), 500
 
 @auth_bp.route('/me', methods=['GET'])

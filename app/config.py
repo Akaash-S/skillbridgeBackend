@@ -13,6 +13,9 @@ class Config:
     # Gemini AI
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
     
+    # YouTube Data API
+    YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
+    
     # Adzuna Jobs API
     ADZUNA_APP_ID = os.environ.get('ADZUNA_APP_ID')
     ADZUNA_APP_KEY = os.environ.get('ADZUNA_APP_KEY')
@@ -32,6 +35,7 @@ class Config:
         required_vars = [
             'GOOGLE_APPLICATION_CREDENTIALS',
             'GEMINI_API_KEY',
+            'YOUTUBE_API_KEY',
             'ADZUNA_APP_ID',
             'ADZUNA_APP_KEY'
         ]

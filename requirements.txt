@@ -18,6 +18,13 @@ google-auth-httplib2==0.2.0
 google-generativeai==0.3.2
 google-ai-generativelanguage==0.4.0
 
+# YouTube Data API
+google-api-python-client==2.108.0
+
+# MFA & TOTP
+pyotp==2.9.0
+qrcode[pil]==7.4.2
+
 # HTTP Requests & API Integration
 requests==2.31.0
 urllib3==2.1.0
