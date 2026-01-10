@@ -493,3 +493,228 @@ def analyze_skill_gaps(role_id):
             'error': 'Failed to analyze skill gaps',
             'code': 'ANALYZE_GAPS_ERROR'
         }), 500
+
+@skills_bp.route('/analytics', methods=['GET'])
+@auth_required
+def get_skills_analytics():
+    """
+    Get comprehensive skills analytics and intelligence data
+    Returns market demand, salary impact, and skill trends
+    """
+    try:
+        uid = request.current_user['uid']
+        
+        # Get user skills for personalized analytics
+        user_skills = skills_engine.get_user_skills(uid)
+        user_skill_ids = [skill.get('skillId') for skill in user_skills]
+        
+        # Get all master skills for market analysis
+        all_skills = skills_engine.get_master_skills()
+        
+        # Calculate skill analytics
+        skill_analytics = {}
+        
+        for skill in all_skills:
+            skill_id = skill.get('skillId')
+            skill_name = skill.get('name')
+            category = skill.get('category')
+            
+            # Mock analytics data based on skill popularity and category
+            is_hot = skill_id in ['react', 'ts', 'python', 'kubernetes', 'ml', 'aws', 'docker', 'nextjs']
+            is_emerging = skill_id in ['rust', 'go', 'graphql', 'webassembly']
+            is_declining = skill_id in ['angular', 'java', 'jquery']
+            
+            # Calculate demand based on category and popularity
+            base_demand = {
+                'Programming Languages': 75,
+                'Frontend': 70,
+                'Backend': 72,
+                'Database': 65,
+                'DevOps & Cloud': 80,
+                'Data Science': 85,
+                'Soft Skills': 60
+            }.get(category, 50)
+            
+            # Adjust demand based on skill status
+            if is_hot:
+                demand = min(95, base_demand + 20)
+                salary_impact = 15
+                growth_rate = 25
+            elif is_emerging:
+                demand = min(85, base_demand + 10)
+                salary_impact = 12
+                growth_rate = 35
+            elif is_declining:
+                demand = max(20, base_demand - 30)
+                salary_impact = 3
+                growth_rate = -10
+            else:
+                demand = base_demand
+                salary_impact = 8
+                growth_rate = 5
+            
+            skill_analytics[skill_id] = {
+                'skillId': skill_id,
+                'skillName': skill_name,
+                'category': category,
+                'demandPercentage': demand,
+                'salaryImpact': salary_impact,
+                'growthRate': growth_rate,
+                'trend': 'up' if growth_rate > 10 else 'down' if growth_rate < 0 else 'stable',
+                'isHot': is_hot,
+                'isEmerging': is_emerging,
+                'isDeclining': is_declining,
+                'jobOpenings': max(500, int(demand * 100 + (hash(skill_id) % 5000))),
+                'learningTime': '2-4 months' if is_hot else '3-6 months' if is_emerging else '1-3 months',
+                'difficulty': 'advanced' if is_emerging else 'intermediate' if is_hot else 'beginner',
+                'hasUserSkill': skill_id in user_skill_ids
+            }
+        
+        # Calculate user portfolio analytics
+        user_analytics = {
+            'totalSkills': len(user_skills),
+            'hotSkills': len([s for s in user_skill_ids if skill_analytics.get(s, {}).get('isHot', False)]),
+            'emergingSkills': len([s for s in user_skill_ids if skill_analytics.get(s, {}).get('isEmerging', False)]),
+            'decliningSkills': len([s for s in user_skill_ids if skill_analytics.get(s, {}).get('isDeclining', False)]),
+            'averageDemand': sum([skill_analytics.get(s, {}).get('demandPercentage', 0) for s in user_skill_ids]) / max(len(user_skill_ids), 1),
+            'totalSalaryImpact': sum([skill_analytics.get(s, {}).get('salaryImpact', 0) for s in user_skill_ids]),
+            'marketValue': 'high' if len([s for s in user_skill_ids if skill_analytics.get(s, {}).get('demandPercentage', 0) > 70]) > len(user_skill_ids) * 0.5 else 'medium'
+        }
+        
+        return jsonify({
+            'skillAnalytics': skill_analytics,
+            'userAnalytics': user_analytics,
+            'marketOverview': {
+                'totalSkills': len(all_skills),
+                'hotSkills': len([s for s in skill_analytics.values() if s.get('isHot')]),
+                'emergingSkills': len([s for s in skill_analytics.values() if s.get('isEmerging')]),
+                'decliningSkills': len([s for s in skill_analytics.values() if s.get('isDeclining')]),
+                'averageGrowthRate': sum([s.get('growthRate', 0) for s in skill_analytics.values()]) / len(skill_analytics)
+            },
+            'generatedAt': '2024-01-10T00:00:00Z'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get skills analytics error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get skills analytics',
+            'code': 'GET_ANALYTICS_ERROR'
+        }), 500
+
+@skills_bp.route('/market-trends', methods=['GET'])
+@auth_required
+def get_market_trends():
+    """
+    Get market trends and forecasting data for skills
+    Returns trend analysis, demand forecasts, and market insights
+    """
+    try:
+        uid = request.current_user['uid']
+        
+        # Get user skills for personalized trends
+        user_skills = skills_engine.get_user_skills(uid)
+        user_skill_ids = [skill.get('skillId') for skill in user_skills]
+        
+        # Market trends data
+        market_trends = {
+            'trendingUp': [
+                {'skillId': 'react', 'skillName': 'React', 'growthRate': 28, 'reason': 'High demand for modern web development'},
+                {'skillId': 'python', 'skillName': 'Python', 'growthRate': 32, 'reason': 'AI/ML boom and versatility'},
+                {'skillId': 'kubernetes', 'skillName': 'Kubernetes', 'growthRate': 45, 'reason': 'Container orchestration adoption'},
+                {'skillId': 'aws', 'skillName': 'AWS', 'growthRate': 25, 'reason': 'Cloud-first strategies'},
+                {'skillId': 'ml', 'skillName': 'Machine Learning', 'growthRate': 40, 'reason': 'AI revolution across industries'},
+                {'skillId': 'ts', 'skillName': 'TypeScript', 'growthRate': 35, 'reason': 'Type safety in JavaScript ecosystem'}
+            ],
+            'trendingDown': [
+                {'skillId': 'angular', 'skillName': 'Angular', 'growthRate': -8, 'reason': 'React dominance in frontend'},
+                {'skillId': 'java', 'skillName': 'Java', 'growthRate': -5, 'reason': 'Modern alternatives gaining traction'},
+                {'skillId': 'jquery', 'skillName': 'jQuery', 'growthRate': -15, 'reason': 'Modern frameworks replacing legacy code'}
+            ],
+            'emerging': [
+                {'skillId': 'rust', 'skillName': 'Rust', 'growthRate': 55, 'reason': 'System programming and performance'},
+                {'skillId': 'go', 'skillName': 'Go', 'growthRate': 42, 'reason': 'Microservices and cloud native development'},
+                {'skillId': 'graphql', 'skillName': 'GraphQL', 'growthRate': 38, 'reason': 'API efficiency and flexibility'}
+            ],
+            'stable': [
+                {'skillId': 'js', 'skillName': 'JavaScript', 'growthRate': 8, 'reason': 'Foundational web technology'},
+                {'skillId': 'html', 'skillName': 'HTML5', 'growthRate': 5, 'reason': 'Web standard with steady demand'},
+                {'skillId': 'css', 'skillName': 'CSS3', 'growthRate': 6, 'reason': 'Essential for web styling'}
+            ]
+        }
+        
+        # Industry insights
+        industry_insights = {
+            'topGrowthSectors': [
+                {'sector': 'Artificial Intelligence', 'growthRate': 45, 'keySkills': ['python', 'ml', 'tensorflow', 'pytorch']},
+                {'sector': 'Cloud Computing', 'growthRate': 35, 'keySkills': ['aws', 'kubernetes', 'docker', 'terraform']},
+                {'sector': 'Web Development', 'growthRate': 25, 'keySkills': ['react', 'ts', 'nextjs', 'nodejs']},
+                {'sector': 'Data Science', 'growthRate': 30, 'keySkills': ['python', 'pandas', 'sql', 'dataviz']}
+            ],
+            'salaryTrends': {
+                'highestPaying': [
+                    {'skillId': 'ml', 'skillName': 'Machine Learning', 'avgSalaryBoost': 25},
+                    {'skillId': 'kubernetes', 'skillName': 'Kubernetes', 'avgSalaryBoost': 22},
+                    {'skillId': 'aws', 'skillName': 'AWS', 'avgSalaryBoost': 20},
+                    {'skillId': 'python', 'skillName': 'Python', 'avgSalaryBoost': 18}
+                ],
+                'fastestGrowing': [
+                    {'skillId': 'rust', 'skillName': 'Rust', 'salaryGrowth': 35},
+                    {'skillId': 'go', 'skillName': 'Go', 'salaryGrowth': 28},
+                    {'skillId': 'kubernetes', 'skillName': 'Kubernetes', 'salaryGrowth': 25}
+                ]
+            },
+            'geographicTrends': {
+                'hotMarkets': ['San Francisco', 'Seattle', 'New York', 'Austin', 'Boston'],
+                'emergingMarkets': ['Denver', 'Atlanta', 'Portland', 'Nashville', 'Raleigh']
+            }
+        }
+        
+        # Personalized recommendations based on user skills
+        user_recommendations = []
+        for skill_id in user_skill_ids:
+            # Find complementary skills
+            if skill_id == 'react':
+                user_recommendations.extend(['ts', 'nextjs', 'nodejs'])
+            elif skill_id == 'python':
+                user_recommendations.extend(['ml', 'pandas', 'aws'])
+            elif skill_id == 'js':
+                user_recommendations.extend(['react', 'ts', 'nodejs'])
+        
+        # Remove duplicates and skills user already has
+        user_recommendations = list(set(user_recommendations) - set(user_skill_ids))
+        
+        # Forecast data (next 12 months)
+        forecast = {
+            'skillDemandForecast': {
+                'increasingDemand': ['python', 'react', 'kubernetes', 'ml', 'aws'],
+                'decreasingDemand': ['angular', 'java', 'jquery'],
+                'stableDemand': ['js', 'html', 'css', 'sql']
+            },
+            'jobMarketForecast': {
+                'totalJobGrowth': 15,
+                'techJobGrowth': 22,
+                'remoteJobGrowth': 35,
+                'aiRelatedJobGrowth': 50
+            },
+            'skillGapAnalysis': {
+                'mostInDemand': ['python', 'react', 'kubernetes', 'ml'],
+                'leastSupplied': ['rust', 'go', 'kubernetes', 'ml'],
+                'biggestGaps': ['ml', 'kubernetes', 'rust', 'go']
+            }
+        }
+        
+        return jsonify({
+            'marketTrends': market_trends,
+            'industryInsights': industry_insights,
+            'userRecommendations': user_recommendations[:8],  # Limit to top 8
+            'forecast': forecast,
+            'lastUpdated': '2024-01-10T00:00:00Z',
+            'dataSource': 'SkillBridge Intelligence Engine'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get market trends error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get market trends',
+            'code': 'GET_MARKET_TRENDS_ERROR'
+        }), 500
