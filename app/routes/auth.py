@@ -14,7 +14,11 @@ db_service = FirestoreService()
 def login():
     """
     Authenticate user with Firebase ID token and create/update user profile
-    Expected payload: { "idToken": "firebase_id_token" }
+    Expected payload: { 
+        "idToken": "firebase_id_token",
+        "sessionType": "explicit_login|session_restore|redirect_complete",
+        "skipMFA": boolean (optional)
+    }
     """
     try:
         data = request.get_json()
@@ -35,6 +39,10 @@ def login():
             }), 401
         
         uid = user_info['uid']
+        session_type = data.get('sessionType', 'explicit_login')
+        skip_mfa = data.get('skipMFA', False)
+        
+        logger.info(f"Login attempt - UID: {uid}, Session: {session_type}, Skip MFA: {skip_mfa}")
         
         # Check if user exists in Firestore
         existing_user = db_service.get_document('users', uid)
@@ -45,10 +53,19 @@ def login():
             # Check if MFA is enabled for this user
             user_mfa = db_service.get_document('user_mfa', uid)
             
-            if user_mfa and user_mfa.get('enabled', False):
-                # MFA is enabled, require MFA verification
+            # Determine if MFA should be required
+            mfa_enabled = user_mfa and user_mfa.get('enabled', False)
+            should_require_mfa = (
+                mfa_enabled and 
+                not skip_mfa and 
+                session_type == 'explicit_login'
+            )
+            
+            if should_require_mfa:
+                # MFA is enabled and required for this login
                 mfa_token = mfa_service.create_mfa_session(uid)
                 
+                logger.info(f"MFA required for user {uid}")
                 return jsonify({
                     'message': 'MFA verification required',
                     'mfa_required': True,
@@ -63,8 +80,10 @@ def login():
             })
             
             # Log activity
-            db_service.log_user_activity(uid, 'LOGIN', 'User logged in')
+            activity_message = f'User logged in via {session_type}'
+            db_service.log_user_activity(uid, 'LOGIN', activity_message)
             
+            logger.info(f"Login successful for user {uid} via {session_type}")
             return jsonify({
                 'message': 'Login successful',
                 'user': existing_user,
@@ -100,6 +119,7 @@ def login():
             # Log activity
             db_service.log_user_activity(uid, 'REGISTRATION', 'New user registered')
             
+            logger.info(f"New user created: {uid}")
             return jsonify({
                 'message': 'User created successfully',
                 'user': new_user,
@@ -118,7 +138,11 @@ def login():
 def complete_mfa_login():
     """
     Complete login after MFA verification
-    Expected payload: { "mfa_token": "token", "code": "123456", "is_recovery_code": false }
+    Expected payload: { 
+        "mfa_token": "token", 
+        "code": "123456", 
+        "is_recovery_code": false 
+    }
     """
     try:
         data = request.get_json()
@@ -158,15 +182,8 @@ def complete_mfa_login():
                     if mfa_service.verify_recovery_code(verification_code, recovery_code['hash']):
                         # Mark recovery code as used
                         user_mfa = mfa_service.mark_recovery_code_used(user_mfa, verification_code)
-                        user_mfa['updated_at'] = datetime.utcnow().isoformat()
-                        
-                        # Update in database
                         db_service.update_document('user_mfa', uid, user_mfa)
-                        
                         verification_successful = True
-                        
-                        # Log recovery code usage
-                        db_service.log_user_activity(uid, 'MFA_RECOVERY_CODE_USED', 'Recovery code used for login')
                         break
         else:
             # Verify TOTP code
@@ -175,14 +192,15 @@ def complete_mfa_login():
         
         if not verification_successful:
             # Log failed attempt
-            db_service.log_user_activity(uid, 'MFA_LOGIN_FAILED', f'Failed MFA login attempt')
+            db_service.log_user_activity(uid, 'MFA_FAILED', f'Failed MFA verification attempt')
             
             return jsonify({
                 'error': 'Invalid verification code',
-                'code': 'INVALID_VERIFICATION_CODE'
+                'code': 'INVALID_MFA_CODE'
             }), 400
         
-        # MFA verification successful, complete login
+        # MFA verification successful
+        # Get user profile
         user_profile = db_service.get_document('users', uid)
         if not user_profile:
             return jsonify({
@@ -190,47 +208,36 @@ def complete_mfa_login():
                 'code': 'USER_NOT_FOUND'
             }), 404
         
-        # Update last login time and MFA usage
-        current_time = datetime.utcnow()
+        # Update last login time
         db_service.update_document('users', uid, {
-            'lastLoginAt': current_time
+            'lastLoginAt': datetime.utcnow()
         })
         
-        user_mfa['last_used_at'] = current_time.isoformat()
-        db_service.update_document('user_mfa', uid, user_mfa)
+        # Log successful MFA
+        mfa_method = 'recovery_code' if is_recovery_code else 'totp'
+        db_service.log_user_activity(uid, 'MFA_SUCCESS', f'Successful MFA verification via {mfa_method}')
         
-        # Log successful login
-        db_service.log_user_activity(uid, 'LOGIN_MFA_SUCCESS', 'User logged in with MFA')
-        
-        # Get remaining recovery codes count
-        remaining_codes = mfa_service.get_backup_codes_count(user_mfa)
+        logger.info(f"MFA login successful for user {uid} via {mfa_method}")
         
         return jsonify({
-            'message': 'Login successful',
-            'user': user_profile,
-            'isNewUser': False,
-            'mfa_verified': True,
-            'remaining_recovery_codes': remaining_codes
+            'message': 'MFA verification successful',
+            'user': user_profile
         }), 200
         
     except Exception as e:
         logger.error(f"MFA login error: {str(e)}")
         return jsonify({
-            'error': 'Internal server error during MFA login',
+            'error': 'Internal server error during MFA verification',
             'code': 'MFA_LOGIN_ERROR'
         }), 500
 
 @auth_bp.route('/me', methods=['GET'])
 @auth_required
 def get_current_user():
-    """
-    Get current authenticated user profile
-    Requires: Authorization header with Firebase ID token
-    """
+    """Get current authenticated user profile"""
     try:
         uid = request.current_user['uid']
         
-        # Get user profile from Firestore
         user_profile = db_service.get_document('users', uid)
         if not user_profile:
             return jsonify({
@@ -245,16 +252,13 @@ def get_current_user():
     except Exception as e:
         logger.error(f"Get current user error: {str(e)}")
         return jsonify({
-            'error': 'Failed to get user profile',
+            'error': 'Internal server error',
             'code': 'GET_USER_ERROR'
         }), 500
 
 @auth_bp.route('/verify', methods=['POST'])
 def verify_token():
-    """
-    Verify Firebase ID token without login
-    Expected payload: { "idToken": "firebase_id_token" }
-    """
+    """Verify Firebase ID token without login"""
     try:
         data = request.get_json()
         
@@ -272,52 +276,13 @@ def verify_token():
             }), 401
         
         return jsonify({
-            'valid': True,
-            'user': user_info
+            'message': 'Token is valid',
+            'user_info': user_info
         }), 200
         
     except Exception as e:
         logger.error(f"Token verification error: {str(e)}")
         return jsonify({
-            'error': 'Token verification failed',
-            'code': 'TOKEN_VERIFICATION_ERROR'
-        }), 500
-
-@auth_bp.route('/debug-token', methods=['GET'])
-def debug_token():
-    """
-    Debug endpoint to check what token is being received
-    """
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({
-                'error': 'No Authorization header found',
-                'headers': dict(request.headers)
-            }), 400
-        
-        # Extract token
-        try:
-            scheme, token = auth_header.split(' ', 1)
-            token_preview = f"{token[:20]}...{token[-10:]}" if len(token) > 30 else token
-        except ValueError:
-            return jsonify({
-                'error': 'Invalid Authorization header format',
-                'auth_header': auth_header
-            }), 400
-        
-        # Try to verify token
-        user_info = FirebaseAuthService.verify_token(token)
-        
-        return jsonify({
-            'token_preview': token_preview,
-            'token_length': len(token),
-            'verification_result': 'valid' if user_info else 'invalid',
-            'user_info': user_info if user_info else None
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'error': f'Debug failed: {str(e)}',
-            'auth_header': request.headers.get('Authorization', 'None')
+            'error': 'Internal server error during token verification',
+            'code': 'TOKEN_VERIFY_ERROR'
         }), 500

@@ -83,7 +83,8 @@ class FirestoreService:
             
             if filters:
                 for field, operator, value in filters:
-                    query = query.where(field, operator, value)
+                    # Use the new filter keyword argument syntax
+                    query = query.where(filter=firestore.FieldFilter(field, operator, value))
             
             if limit:
                 query = query.limit(limit)

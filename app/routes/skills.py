@@ -87,6 +87,41 @@ def get_skills_with_role_analysis():
             'code': 'GET_SKILLS_ROLE_ANALYSIS_ERROR'
         }), 500
 
+@skills_bp.route('/master', methods=['GET'])
+@auth_required
+def get_master_skills():
+    """
+    Get master skills catalog (simple version without pagination)
+    Query params:
+    - category: filter by category
+    """
+    try:
+        uid = request.current_user['uid']
+        category = request.args.get('category')
+        
+        # Get master skills with optional category filtering
+        all_skills = skills_engine.get_master_skills(category=category)
+        
+        # Format skills for frontend
+        formatted_skills = []
+        for skill in all_skills:
+            formatted_skill = {
+                'id': skill.get('skillId'),
+                'name': skill.get('name'),
+                'category': skill.get('category'),
+                'description': skill.get('description', '')
+            }
+            formatted_skills.append(formatted_skill)
+        
+        return jsonify(formatted_skills), 200
+            
+    except Exception as e:
+        logger.error(f"Get master skills error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get master skills',
+            'code': 'GET_MASTER_SKILLS_ERROR'
+        }), 500
+
 @skills_bp.route('/master/paginated', methods=['GET'])
 @auth_required
 def get_master_skills_paginated():
