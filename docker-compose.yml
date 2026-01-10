@@ -9,7 +9,9 @@ services:
       - FLASK_ENV=production
       - PORT=8080
       - SECRET_KEY=${SECRET_KEY}
+      - FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-service-account.json
+      - DISABLE_FIREBASE=${DISABLE_FIREBASE:-false}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ADZUNA_APP_ID=${ADZUNA_APP_ID}
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY}

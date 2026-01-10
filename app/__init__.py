@@ -2,8 +2,11 @@ from flask import Flask
 from flask_cors import CORS
 from app.config import Config
 from app.db.firestore import init_firestore
-from app.services.firebase_service import init_firebase
+from app.services.firebase_service import init_firebase, is_firebase_available
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
@@ -18,9 +21,22 @@ def create_app():
          max_age=86400  # Cache preflight for 24 hours
     )
     
-    # Initialize Firebase and Firestore
-    init_firebase()
-    init_firestore()
+    # Initialize Firebase and Firestore with graceful error handling
+    try:
+        init_firebase()
+        if is_firebase_available():
+            logger.info("✅ Firebase initialized successfully")
+        else:
+            logger.warning("⚠️ Firebase not available - running in development mode")
+    except Exception as e:
+        logger.warning(f"⚠️ Firebase initialization failed: {str(e)} - continuing without Firebase")
+    
+    try:
+        init_firestore()
+        logger.info("✅ Firestore initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Firestore initialization failed: {str(e)}")
+        # Firestore is more critical, but we can still continue
     
     # Register blueprints
     from app.routes.auth import auth_bp
@@ -51,6 +67,11 @@ def create_app():
     
     @app.route('/health')
     def health_check():
-        return {'status': 'healthy', 'service': 'skillbridge-backend'}, 200
+        firebase_status = "available" if is_firebase_available() else "unavailable"
+        return {
+            'status': 'healthy', 
+            'service': 'skillbridge-backend',
+            'firebase': firebase_status
+        }, 200
     
     return app

@@ -4,32 +4,101 @@ from flask import request, jsonify
 from functools import wraps
 import logging
 import os
+import json
+import base64
 
 logger = logging.getLogger(__name__)
 
+# Global flag to track Firebase availability
+FIREBASE_AVAILABLE = False
+
 def init_firebase():
-    """Initialize Firebase Admin SDK"""
+    """Initialize Firebase Admin SDK with graceful fallback"""
+    global FIREBASE_AVAILABLE
+    
+    # Check if Firebase should be disabled via environment variable
+    if os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes'):
+        logger.info("Firebase initialization disabled via DISABLE_FIREBASE environment variable")
+        FIREBASE_AVAILABLE = False
+        return
+    
     try:
         if not firebase_admin._apps:
+            # Method 1: Base64 encoded service account (preferred for deployment)
+            firebase_base64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')
+            if firebase_base64:
+                try:
+                    # Fix base64 padding if needed
+                    missing_padding = len(firebase_base64) % 4
+                    if missing_padding:
+                        firebase_base64 += '=' * (4 - missing_padding)
+                    
+                    # Decode base64 and parse JSON
+                    decoded_credentials = base64.b64decode(firebase_base64).decode('utf-8')
+                    service_account_info = json.loads(decoded_credentials)
+                    cred = credentials.Certificate(service_account_info)
+                    firebase_admin.initialize_app(cred)
+                    logger.info("Firebase Admin SDK initialized successfully with base64 credentials")
+                    FIREBASE_AVAILABLE = True
+                    return
+                except Exception as base64_error:
+                    logger.warning(f"Failed to initialize Firebase with base64 credentials: {str(base64_error)}")
+                    # Continue to try other methods
+            
+            # Method 2: Service account file path (fallback)
             cred_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-            if cred_path:
+            if cred_path and os.path.exists(cred_path):
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred)
-                logger.info("Firebase Admin SDK initialized successfully")
-            else:
-                # For Google Cloud environments, use default credentials
+                logger.info(f"Firebase Admin SDK initialized successfully with credentials from {cred_path}")
+                FIREBASE_AVAILABLE = True
+                return
+            elif cred_path:
+                logger.warning(f"Firebase credentials file not found at {cred_path}")
+            
+            # Method 3: Default credentials for GCP environments
+            try:
                 firebase_admin.initialize_app()
                 logger.info("Firebase Admin SDK initialized with default credentials")
+                FIREBASE_AVAILABLE = True
+                return
+            except Exception as default_error:
+                logger.warning(f"Failed to initialize Firebase with default credentials: {str(default_error)}")
+                FIREBASE_AVAILABLE = False
+        else:
+            logger.info("Firebase Admin SDK already initialized")
+            FIREBASE_AVAILABLE = True
+            
     except Exception as e:
-        logger.error(f"Failed to initialize Firebase: {str(e)}")
-        raise
+        logger.warning(f"Firebase initialization failed: {str(e)}")
+        logger.info("Application will continue without Firebase authentication")
+        FIREBASE_AVAILABLE = False
+
+def is_firebase_available():
+    """Check if Firebase is available and initialized"""
+    return FIREBASE_AVAILABLE
+
+def encode_service_account_to_base64(service_account_path: str) -> str:
+    """Helper function to encode service account JSON to base64"""
+    try:
+        with open(service_account_path, 'r') as f:
+            service_account_json = f.read()
+        encoded = base64.b64encode(service_account_json.encode('utf-8')).decode('utf-8')
+        return encoded
+    except Exception as e:
+        logger.error(f"Failed to encode service account to base64: {str(e)}")
+        return None
 
 class FirebaseAuthService:
-    """Firebase Authentication service"""
+    """Firebase Authentication service with graceful fallback"""
     
     @staticmethod
     def verify_token(id_token: str) -> dict:
         """Verify Firebase ID token and return user info"""
+        if not FIREBASE_AVAILABLE:
+            logger.warning("Firebase not available - token verification skipped")
+            return None
+            
         try:
             decoded_token = auth.verify_id_token(id_token)
             return {
@@ -52,6 +121,10 @@ class FirebaseAuthService:
     @staticmethod
     def get_user_by_uid(uid: str) -> dict:
         """Get user record by UID"""
+        if not FIREBASE_AVAILABLE:
+            logger.warning("Firebase not available - user lookup skipped")
+            return None
+            
         try:
             user_record = auth.get_user(uid)
             return {
@@ -95,9 +168,22 @@ class FirebaseAuthService:
         return FirebaseAuthService.verify_token(token)
 
 def auth_required(f):
-    """Decorator to require Firebase authentication"""
+    """Decorator to require Firebase authentication with graceful fallback"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # If Firebase is not available, allow development mode
+        if not FIREBASE_AVAILABLE:
+            logger.warning("Firebase not available - using development mode (no auth required)")
+            # Create a mock user for development
+            request.current_user = {
+                'uid': 'dev-user-123',
+                'email': 'dev@example.com',
+                'name': 'Development User',
+                'photoUrl': None,
+                'email_verified': True
+            }
+            return f(*args, **kwargs)
+        
         try:
             # Extract token from Authorization header
             token = FirebaseAuthService.extract_token_from_request()
@@ -136,9 +222,15 @@ def auth_required(f):
     return decorated_function
 
 def optional_auth(f):
-    """Decorator for optional authentication (user info available if authenticated)"""
+    """Decorator for optional authentication with graceful fallback"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # If Firebase is not available, set no user
+        if not FIREBASE_AVAILABLE:
+            logger.debug("Firebase not available - no user authentication")
+            request.current_user = None
+            return f(*args, **kwargs)
+        
         try:
             token = FirebaseAuthService.extract_token_from_request()
             if token:
