@@ -18,48 +18,60 @@ class JobsService:
         self.cache_duration_hours = 6  # Cache jobs for 6 hours
     
     def search_jobs(self, role: str, country: str = 'in', location: str = None, limit: int = 20) -> Dict:
-        """Search for jobs using Adzuna API with caching"""
+        """Search for jobs using Adzuna API with optimized caching"""
         try:
-            # Check cache first
-            cached_jobs = self._get_cached_jobs(role, country)
-            if cached_jobs:
-                logger.info(f"Returning cached jobs for {role} in {country}")
+            # Normalize search parameters for better caching
+            role_normalized = role.strip().lower()
+            country_normalized = country.lower()
+            
+            # Check cache first with normalized key
+            cache_key = f"{role_normalized.replace(' ', '_')}_{country_normalized}"
+            cached_jobs = self._get_cached_jobs(cache_key, role)
+            if cached_jobs and len(cached_jobs.get('jobs', [])) > 0:
+                logger.info(f"Cache hit for {role} in {country} ({len(cached_jobs['jobs'])} jobs)")
                 return {
                     'jobs': cached_jobs['jobs'][:limit],
                     'source': 'cache',
-                    'cachedAt': cached_jobs['cachedAt']
+                    'total': len(cached_jobs['jobs']),
+                    'cachedAt': cached_jobs['cachedAt'],
+                    'searchTerm': role
                 }
             
-            # Fetch from Adzuna API
-            jobs_data = self._fetch_from_adzuna(role, country, location, limit)
+            # Fetch from Adzuna API with optimized parameters
+            jobs_data = self._fetch_from_adzuna(role, country, location, min(limit * 2, 50))  # Fetch more for better results
             
-            if jobs_data and 'results' in jobs_data:
-                # Process and format jobs
+            if jobs_data and 'results' in jobs_data and len(jobs_data['results']) > 0:
+                # Process and format jobs with enhanced data
                 formatted_jobs = self._format_jobs(jobs_data['results'])
                 
-                # Cache the results
-                self._cache_jobs(role, country, formatted_jobs)
+                # Cache the results with normalized key
+                self._cache_jobs(cache_key, role, formatted_jobs)
+                
+                logger.info(f"API fetch for {role} in {country}: {len(formatted_jobs)} jobs in cache")
                 
                 return {
-                    'jobs': formatted_jobs,
+                    'jobs': formatted_jobs[:limit],
                     'source': 'api',
-                    'total': jobs_data.get('count', len(formatted_jobs))
+                    'total': jobs_data.get('count', len(formatted_jobs)),
+                    'searchTerm': role
                 }
             else:
                 logger.warning(f"No jobs found for {role} in {country}")
                 return {
                     'jobs': [],
                     'source': 'api',
-                    'total': 0
+                    'total': 0,
+                    'searchTerm': role
                 }
                 
         except Exception as e:
-            logger.error(f"Error searching jobs: {str(e)}")
-            # Return empty results on error
+            logger.error(f"Error searching jobs for {role}: {str(e)}")
             return {
                 'jobs': [],
                 'source': 'error',
-                'error': str(e)
+                'total': 0,
+                'error': str(e),
+                'searchTerm': role
             }
     
     def _fetch_from_adzuna(self, role: str, country: str, location: str = None, limit: int = 20) -> Optional[Dict]:
@@ -180,45 +192,51 @@ class JobsService:
                 'max': salary_max
             }
     
-    def _get_cached_jobs(self, role: str, country: str) -> Optional[Dict]:
-        """Get cached jobs if still valid"""
+    def _get_cached_jobs(self, cache_key: str, original_role: str) -> Optional[Dict]:
+        """Get cached jobs if still valid with normalized cache key"""
         try:
-            cache_key = f"{role.lower()}_{country.lower()}"
             cached_data = self.db_service.get_document('jobs_cache', cache_key)
             
             if not cached_data:
                 return None
             
-            # Check if cache is still valid
+            # Check if cache is still valid (reduced to 3 minutes for faster updates)
             cached_at = cached_data.get('cachedAt')
             if cached_at:
-                cache_age = datetime.utcnow() - cached_at
-                if cache_age < timedelta(hours=self.cache_duration_hours):
+                # Ensure both datetimes are timezone-aware or naive
+                if hasattr(cached_at, 'tzinfo') and cached_at.tzinfo is not None:
+                    from datetime import timezone
+                    current_time = datetime.now(timezone.utc)
+                else:
+                    current_time = datetime.utcnow()
+                
+                cache_age = current_time - cached_at
+                # Reduced cache duration to 3 minutes for faster updates
+                if cache_age < timedelta(minutes=3):
                     return cached_data
             
             return None
             
         except Exception as e:
-            logger.error(f"Error getting cached jobs: {str(e)}")
+            logger.error(f"Error getting cached jobs for {original_role}: {str(e)}")
             return None
     
-    def _cache_jobs(self, role: str, country: str, jobs: List[Dict]):
-        """Cache job search results"""
+    def _cache_jobs(self, cache_key: str, original_role: str, jobs: List[Dict]):
+        """Cache job search results with normalized key"""
         try:
-            cache_key = f"{role.lower()}_{country.lower()}"
             cache_data = {
-                'role': role,
-                'country': country,
+                'role': original_role,
+                'normalizedKey': cache_key,
                 'jobs': jobs,
                 'cachedAt': datetime.utcnow(),
                 'jobCount': len(jobs)
             }
             
             self.db_service.create_document('jobs_cache', cache_key, cache_data)
-            logger.info(f"Cached {len(jobs)} jobs for {role} in {country}")
+            logger.info(f"Cached {len(jobs)} jobs for {original_role} (key: {cache_key})")
             
         except Exception as e:
-            logger.error(f"Error caching jobs: {str(e)}")
+            logger.error(f"Error caching jobs for {original_role}: {str(e)}")
     
     def get_job_recommendations(self, uid: str, limit: int = 10) -> List[Dict]:
         """Get job recommendations based on user profile and skills"""
@@ -307,3 +325,4 @@ class JobsService:
         except Exception as e:
             logger.error(f"Error getting trending roles: {str(e)}")
             return []
+    
