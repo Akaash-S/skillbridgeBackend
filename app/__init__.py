@@ -12,9 +12,13 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
+    # Get CORS origins from environment variable
+    cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(',')
+    cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
+    
     # Enable CORS for frontend with comprehensive configuration
     CORS(app, 
-         origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:8081", "http://127.0.0.1:8081", "https://skillbridge.app"],
+         origins=cors_origins,
          methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
          allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
          supports_credentials=True,
