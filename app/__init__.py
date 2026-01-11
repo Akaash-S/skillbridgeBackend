@@ -12,17 +12,24 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # Get CORS origins from environment variable
+    # Get CORS origins from environment variable - Production ready
     cors_origins = os.environ.get('CORS_ORIGINS', 'https://skillbridge.asolvitra.tech').split(',')
     cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
+    
+    # Add localhost for development
+    if os.environ.get('FLASK_ENV') == 'development':
+        cors_origins.extend(['http://localhost:8080', 'http://127.0.0.1:8080', 'http://localhost:3000'])
+    
+    logger.info(f"🌐 CORS Origins configured: {cors_origins}")
     
     # Enable CORS for frontend with comprehensive configuration
     CORS(app, 
          origins=cors_origins,
          methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRF-Token"],
          supports_credentials=True,
-         max_age=86400  # Cache preflight for 24 hours
+         max_age=86400,  # Cache preflight for 24 hours
+         expose_headers=["Content-Range", "X-Content-Range"]  # For pagination
     )
     
     # Initialize Firebase with detailed status reporting
