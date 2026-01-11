@@ -3,6 +3,7 @@ from app.middleware.auth_required import auth_required
 from app.services.skills_engine import SkillsEngine
 from app.services.user_state_manager import UserStateManager
 from app.utils.validators import validate_required_fields
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,62 @@ def add_skill():
         master_skill = db_service.get_document('skills_master', skill_id)
         
         if not master_skill:
+            # Try to find by skillId field instead of document ID
+            skills = db_service.query_collection('skills_master', [('skillId', '==', skill_id)])
+            if skills:
+                master_skill = skills[0]
+            else:
+                # Skill not found - create it on-the-fly for common skills
+                common_skills = {
+                    'jenkins': {'name': 'Jenkins', 'category': 'DevOps & Cloud'},
+                    'git': {'name': 'Git', 'category': 'DevOps & Cloud'},
+                    'github': {'name': 'GitHub', 'category': 'DevOps & Cloud'},
+                    'gitlab': {'name': 'GitLab', 'category': 'DevOps & Cloud'},
+                    'ansible': {'name': 'Ansible', 'category': 'DevOps & Cloud'},
+                    'puppet': {'name': 'Puppet', 'category': 'DevOps & Cloud'},
+                    'chef': {'name': 'Chef', 'category': 'DevOps & Cloud'},
+                    'nginx': {'name': 'Nginx', 'category': 'DevOps & Cloud'},
+                    'apache': {'name': 'Apache', 'category': 'DevOps & Cloud'},
+                    'linux': {'name': 'Linux', 'category': 'DevOps & Cloud'},
+                    'bash': {'name': 'Bash', 'category': 'DevOps & Cloud'},
+                    'powershell': {'name': 'PowerShell', 'category': 'DevOps & Cloud'},
+                }
+                
+                if skill_id in common_skills:
+                    skill_info = common_skills[skill_id]
+                    new_skill_data = {
+                        'skillId': skill_id,
+                        'name': skill_info['name'],
+                        'category': skill_info['category'],
+                        'type': 'technical',
+                        'aliases': [],
+                        'prerequisites': [],
+                        'relatedSkills': [],
+                        'levels': ['beginner', 'intermediate', 'advanced'],
+                        'source': 'auto-created',
+                        'createdAt': datetime.utcnow(),
+                        'updatedAt': datetime.utcnow()
+                    }
+                    
+                    # Create the skill in master catalog
+                    success = db_service.create_document('skills_master', skill_id, new_skill_data)
+                    if success:
+                        logger.info(f"Auto-created missing skill: {skill_info['name']} ({skill_id})")
+                        master_skill = new_skill_data
+                    else:
+                        logger.error(f"Failed to auto-create skill: {skill_id}")
+                        return jsonify({
+                            'error': f'Skill "{skill_id}" not found in master catalog and could not be created',
+                            'code': 'SKILL_NOT_FOUND'
+                        }), 400
+                else:
+                    logger.error(f"Skill '{skill_id}' not found in skills_master collection and not in common skills list")
+                    return jsonify({
+                        'error': f'Skill "{skill_id}" not found in master catalog',
+                        'code': 'SKILL_NOT_FOUND'
+                    }), 400
+        
+        if not master_skill:
             logger.error(f"Skill '{skill_id}' not found in skills_master collection")
             return jsonify({
                 'error': f'Skill "{skill_id}" not found in master catalog',
@@ -258,7 +315,7 @@ def add_skill():
         
         logger.info(f"Master skill found: {master_skill.get('name')} (ID: {skill_id})")
         
-        # Add skill
+        # Add skill using the skills engine
         success = skills_engine.add_user_skill(uid, skill_id, level, confidence)
         if not success:
             logger.error(f"skills_engine.add_user_skill returned False for skill '{skill_id}'")

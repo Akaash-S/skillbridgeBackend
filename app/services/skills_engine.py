@@ -191,10 +191,22 @@ class SkillsEngine:
             
             if not skills:
                 logger.warning(f"Skill not found in master catalog: {skill_id}")
-                return False
-            
-            master_skill = skills[0]  # Get the first (should be only) match
-            logger.info(f"Found master skill: {master_skill.get('name')} (skillId: {skill_id}, docId: {master_skill.get('id')})")
+                
+                # In development mode (when Firestore is not available), allow adding any skill
+                if not self.db_service._check_availability():
+                    logger.info(f"Development mode: allowing skill {skill_id} without master catalog check")
+                    # Create a mock master skill for development
+                    master_skill = {
+                        'skillId': skill_id,
+                        'name': skill_id.title(),
+                        'category': 'Development',
+                        'levels': ['beginner', 'intermediate', 'advanced']
+                    }
+                else:
+                    return False
+            else:
+                master_skill = skills[0]  # Get the first (should be only) match
+                logger.info(f"Found master skill: {master_skill.get('name')} (skillId: {skill_id}, docId: {master_skill.get('id')})")
             
             # Validate level
             valid_levels = master_skill.get('levels', ['beginner', 'intermediate', 'advanced'])
