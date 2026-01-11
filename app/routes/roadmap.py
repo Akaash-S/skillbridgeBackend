@@ -236,24 +236,20 @@ def update_progress():
         data = request.get_json()
         
         # Validate required fields
-        required_fields = ['milestoneIndex', 'skillId', 'completed']
+        required_fields = ['skillId', 'completed']
         if not validate_required_fields(data, required_fields):
             return jsonify({
                 'error': f'Missing required fields: {", ".join(required_fields)}',
                 'code': 'VALIDATION_ERROR'
             }), 400
         
-        milestone_index = data['milestoneIndex']
         skill_id = data['skillId']
         completed = data['completed']
         
-        # Validate types
-        if not isinstance(milestone_index, int) or milestone_index < 0:
-            return jsonify({
-                'error': 'milestoneIndex must be a non-negative integer',
-                'code': 'VALIDATION_ERROR'
-            }), 400
+        # Set milestone_index to 0 as default since we'll find the correct milestone
+        milestone_index = 0
         
+        # Validate types
         if not isinstance(completed, bool):
             return jsonify({
                 'error': 'completed must be a boolean',
