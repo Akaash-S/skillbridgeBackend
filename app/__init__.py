@@ -13,7 +13,7 @@ def create_app():
     app.config.from_object(Config)
     
     # Get CORS origins from environment variable
-    cors_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(',')
+    cors_origins = os.environ.get('CORS_ORIGINS', 'https://skillbridge.asolvitra.tech').split(',')
     cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
     
     # Enable CORS for frontend with comprehensive configuration
