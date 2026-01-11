@@ -1,8 +1,8 @@
 from flask import Flask
 from flask_cors import CORS
 from app.config import Config
-from app.db.firestore import init_firestore
-from app.services.firebase_service import init_firebase, is_firebase_available
+from app.db.firestore import init_firestore, is_firestore_available
+from app.services.firebase_service import init_firebase, is_firebase_available, get_firebase_status
 import os
 import logging
 
@@ -21,22 +21,39 @@ def create_app():
          max_age=86400  # Cache preflight for 24 hours
     )
     
-    # Initialize Firebase and Firestore with graceful error handling
+    # Initialize Firebase with detailed status reporting
+    logger.info("🚀 Starting Firebase initialization...")
     try:
         init_firebase()
+        firebase_status = get_firebase_status()
+        
         if is_firebase_available():
             logger.info("✅ Firebase initialized successfully")
         else:
-            logger.warning("⚠️ Firebase not available - running in development mode")
+            if firebase_status['disabled']:
+                logger.info("⚠️ Firebase disabled via DISABLE_FIREBASE environment variable")
+            elif not firebase_status['base64_configured']:
+                logger.warning("⚠️ Firebase not available - FIREBASE_SERVICE_ACCOUNT_BASE64 not configured")
+            else:
+                logger.warning("⚠️ Firebase not available - initialization failed")
+        
+        logger.info(f"🔥 Firebase Status: {firebase_status}")
+        
     except Exception as e:
-        logger.warning(f"⚠️ Firebase initialization failed: {str(e)} - continuing without Firebase")
+        logger.error(f"❌ Firebase initialization error: {str(e)}")
     
+    # Initialize Firestore with detailed status reporting
+    logger.info("🚀 Starting Firestore initialization...")
     try:
         init_firestore()
-        logger.info("✅ Firestore initialized successfully")
+        
+        if is_firestore_available():
+            logger.info("✅ Firestore initialized successfully")
+        else:
+            logger.warning("⚠️ Firestore not available - using mock database operations")
+        
     except Exception as e:
-        logger.error(f"❌ Firestore initialization failed: {str(e)}")
-        # Firestore is more critical, but we can still continue
+        logger.error(f"❌ Firestore initialization error: {str(e)}")
     
     # Register blueprints
     from app.routes.auth import auth_bp
@@ -67,11 +84,16 @@ def create_app():
     
     @app.route('/health')
     def health_check():
-        firebase_status = "available" if is_firebase_available() else "unavailable"
+        firebase_status = get_firebase_status()
         return {
             'status': 'healthy', 
             'service': 'skillbridge-backend',
-            'firebase': firebase_status
+            'firebase': firebase_status,
+            'firestore': {
+                'available': is_firestore_available(),
+                'base64_configured': bool(os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')),
+                'disabled': os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes')
+            }
         }, 200
     
     return app

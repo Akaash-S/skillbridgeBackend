@@ -10,7 +10,6 @@ services:
       - PORT=8080
       - SECRET_KEY=${SECRET_KEY}
       - FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64}
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/firebase-service-account.json
       - DISABLE_FIREBASE=${DISABLE_FIREBASE:-false}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ADZUNA_APP_ID=${ADZUNA_APP_ID}
@@ -21,7 +20,6 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://skillbridge.app}
     volumes:
-      - ./credentials:/app/credentials:ro
       - ../logs:/app/logs
     restart: unless-stopped
     healthcheck:

@@ -13,65 +13,70 @@ logger = logging.getLogger(__name__)
 FIREBASE_AVAILABLE = False
 
 def init_firebase():
-    """Initialize Firebase Admin SDK with graceful fallback"""
+    """Initialize Firebase Admin SDK with base64 credentials only"""
     global FIREBASE_AVAILABLE
     
     # Check if Firebase should be disabled via environment variable
     if os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes'):
-        logger.info("Firebase initialization disabled via DISABLE_FIREBASE environment variable")
+        logger.info("🔥 Firebase initialization disabled via DISABLE_FIREBASE environment variable")
         FIREBASE_AVAILABLE = False
         return
     
     try:
         if not firebase_admin._apps:
-            # Method 1: Base64 encoded service account (preferred for deployment)
+            # Only use base64 encoded service account
             firebase_base64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')
-            if firebase_base64:
-                try:
-                    # Fix base64 padding if needed
-                    missing_padding = len(firebase_base64) % 4
-                    if missing_padding:
-                        firebase_base64 += '=' * (4 - missing_padding)
-                    
-                    # Decode base64 and parse JSON
-                    decoded_credentials = base64.b64decode(firebase_base64).decode('utf-8')
-                    service_account_info = json.loads(decoded_credentials)
-                    cred = credentials.Certificate(service_account_info)
-                    firebase_admin.initialize_app(cred)
-                    logger.info("Firebase Admin SDK initialized successfully with base64 credentials")
-                    FIREBASE_AVAILABLE = True
-                    return
-                except Exception as base64_error:
-                    logger.warning(f"Failed to initialize Firebase with base64 credentials: {str(base64_error)}")
-                    # Continue to try other methods
-            
-            # Method 2: Service account file path (fallback)
-            cred_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-            if cred_path and os.path.exists(cred_path):
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
-                logger.info(f"Firebase Admin SDK initialized successfully with credentials from {cred_path}")
-                FIREBASE_AVAILABLE = True
-                return
-            elif cred_path:
-                logger.warning(f"Firebase credentials file not found at {cred_path}")
-            
-            # Method 3: Default credentials for GCP environments
-            try:
-                firebase_admin.initialize_app()
-                logger.info("Firebase Admin SDK initialized with default credentials")
-                FIREBASE_AVAILABLE = True
-                return
-            except Exception as default_error:
-                logger.warning(f"Failed to initialize Firebase with default credentials: {str(default_error)}")
+            if not firebase_base64:
+                logger.error("❌ FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable not found")
+                logger.info("💡 Set FIREBASE_SERVICE_ACCOUNT_BASE64 or DISABLE_FIREBASE=true")
                 FIREBASE_AVAILABLE = False
+                return
+            
+            try:
+                # Fix base64 padding if needed
+                missing_padding = len(firebase_base64) % 4
+                if missing_padding:
+                    firebase_base64 += '=' * (4 - missing_padding)
+                
+                # Decode base64 and parse JSON
+                decoded_credentials = base64.b64decode(firebase_base64).decode('utf-8')
+                service_account_info = json.loads(decoded_credentials)
+                
+                # Validate required fields
+                required_fields = ['type', 'project_id', 'private_key', 'client_email']
+                for field in required_fields:
+                    if field not in service_account_info:
+                        raise ValueError(f"Missing required field: {field}")
+                
+                # Initialize Firebase with service account
+                cred = credentials.Certificate(service_account_info)
+                firebase_admin.initialize_app(cred)
+                
+                logger.info("✅ Firebase Admin SDK initialized successfully with base64 credentials")
+                logger.info(f"🔥 Project ID: {service_account_info.get('project_id')}")
+                logger.info(f"🔥 Client Email: {service_account_info.get('client_email')}")
+                FIREBASE_AVAILABLE = True
+                return
+                
+            except json.JSONDecodeError as json_error:
+                logger.error(f"❌ Invalid JSON in base64 credentials: {str(json_error)}")
+                FIREBASE_AVAILABLE = False
+                return
+            except ValueError as val_error:
+                logger.error(f"❌ Invalid service account format: {str(val_error)}")
+                FIREBASE_AVAILABLE = False
+                return
+            except Exception as base64_error:
+                logger.error(f"❌ Failed to initialize Firebase with base64 credentials: {str(base64_error)}")
+                FIREBASE_AVAILABLE = False
+                return
         else:
-            logger.info("Firebase Admin SDK already initialized")
+            logger.info("✅ Firebase Admin SDK already initialized")
             FIREBASE_AVAILABLE = True
             
     except Exception as e:
-        logger.warning(f"Firebase initialization failed: {str(e)}")
-        logger.info("Application will continue without Firebase authentication")
+        logger.error(f"❌ Firebase initialization failed: {str(e)}")
+        logger.info("⚠️ Application will continue without Firebase authentication")
         FIREBASE_AVAILABLE = False
 
 def is_firebase_available():
@@ -88,6 +93,15 @@ def encode_service_account_to_base64(service_account_path: str) -> str:
     except Exception as e:
         logger.error(f"Failed to encode service account to base64: {str(e)}")
         return None
+
+def get_firebase_status():
+    """Get detailed Firebase initialization status"""
+    return {
+        'available': FIREBASE_AVAILABLE,
+        'base64_configured': bool(os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')),
+        'disabled': os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes'),
+        'apps_count': len(firebase_admin._apps) if firebase_admin._apps else 0
+    }
 
 class FirebaseAuthService:
     """Firebase Authentication service with graceful fallback"""
