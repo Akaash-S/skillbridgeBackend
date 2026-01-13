@@ -12,16 +12,16 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # Simple CORS configuration that works
+    # Production CORS configuration for your domains
     CORS(app, 
-         origins=['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:8080'],
+         origins=['https://skillbridge.asolvitra.tech', 'https://www.skillbridge.asolvitra.tech'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
          allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
          supports_credentials=True,
          max_age=86400
     )
     
-    logger.info("🌐 CORS configured for localhost development")
+    logger.info("🌐 CORS configured for production domains: skillbridge.asolvitra.tech")
     
     # Initialize Firebase with detailed status reporting
     logger.info("🚀 Starting Firebase initialization...")
