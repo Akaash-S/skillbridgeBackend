@@ -20,11 +20,18 @@ class Config:
     ADZUNA_APP_ID = os.environ.get('ADZUNA_APP_ID')
     ADZUNA_APP_KEY = os.environ.get('ADZUNA_APP_KEY')
     
-    # SMTP Email
+    # SMTP Email Configuration
     SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
     SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
     SMTP_USER = os.environ.get('SMTP_USER')
     SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
+    SMTP_USE_TLS = os.environ.get('SMTP_USE_TLS', 'true').lower() == 'true'
+    
+    # Email Settings
+    EMAIL_FROM_NAME = os.environ.get('EMAIL_FROM_NAME', 'SkillBridge Suite')
+    EMAIL_SUPPORT = os.environ.get('EMAIL_SUPPORT', os.environ.get('SMTP_USER'))
+    EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 10))  # emails per minute
+    EMAIL_BATCH_SIZE = int(os.environ.get('EMAIL_BATCH_SIZE', 50))  # for bulk emails
     
     # Environment
     FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
