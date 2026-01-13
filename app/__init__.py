@@ -12,65 +12,16 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # Get CORS origins from environment variable - Production ready
-    cors_origins = os.environ.get('CORS_ORIGINS', '*').split(',')
-    cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
-    
-    # Add localhost for development
-    if os.environ.get('FLASK_ENV') == 'development':
-        cors_origins.extend([
-            'http://localhost:3000',
-            'http://localhost:8080', 
-            'http://127.0.0.1:8080',
-            'http://localhost:5173',  # Vite default
-            'http://127.0.0.1:5173'
-        ])
-    
-    logger.info(f"🌐 CORS Origins configured: {cors_origins}")
-    
-    # Enable CORS with comprehensive cross-domain support
+    # Simple CORS configuration that works
     CORS(app, 
-         origins=cors_origins,
-         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-         allow_headers=[
-             "Content-Type", 
-             "Authorization", 
-             "X-Requested-With", 
-             "Accept", 
-             "Origin", 
-             "X-CSRF-Token",
-             "Access-Control-Allow-Origin",
-             "Access-Control-Allow-Headers",
-             "Access-Control-Allow-Methods"
-         ],
+         origins=['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:8080'],
+         methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
          supports_credentials=True,
-         max_age=86400,  # Cache preflight for 24 hours
-         expose_headers=["Content-Range", "X-Content-Range"],
-         send_wildcard=False,  # Important for credentials
-         vary_header=True  # Add Vary: Origin header
+         max_age=86400
     )
     
-    # Add manual OPTIONS handler for all routes
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            response = make_response()
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            response.headers.add('Access-Control-Allow-Headers', "*")
-            response.headers.add('Access-Control-Allow-Methods', "*")
-            return response
-
-    # Add CORS headers to all responses
-    @app.after_request
-    def after_request(response):
-        origin = request.headers.get('Origin')
-        if origin in cors_origins or '*' in cors_origins:
-            response.headers.add('Access-Control-Allow-Origin', origin or '*')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,X-CSRF-Token')
-            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            response.headers.add('Access-Control-Max-Age', '86400')
-        return response
+    logger.info("🌐 CORS configured for localhost development")
     
     # Initialize Firebase with detailed status reporting
     logger.info("🚀 Starting Firebase initialization...")

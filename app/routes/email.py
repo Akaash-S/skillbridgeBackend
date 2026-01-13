@@ -11,43 +11,9 @@ email_bp = Blueprint('email', __name__)
 email_service = EmailService()
 db_service = FirestoreService()
 
-# Add CORS headers to all email routes
-@email_bp.after_request
-def after_request(response):
-    origin = request.headers.get('Origin')
-    response.headers.add('Access-Control-Allow-Origin', origin or '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
-
-# Handle OPTIONS preflight for all email routes
-@email_bp.route('/<path:path>', methods=['OPTIONS'])
-@email_bp.route('/', methods=['OPTIONS'])
-def handle_options(path=None):
-    """Handle preflight OPTIONS requests for all email routes"""
-    response = make_response()
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Max-Age', '86400')
-    return response, 200
-
 @email_bp.route('/test-connection', methods=['GET', 'OPTIONS'])
 def test_connection():
-    """Test endpoint to verify API connectivity with CORS support"""
-    
-    # Handle preflight OPTIONS request
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '86400')
-        return response, 200
-    
+    """Test endpoint to verify API connectivity"""
     response = jsonify({
         'success': True,
         'message': 'Email API is working',
@@ -205,18 +171,7 @@ def send_welcome_email():
 @email_bp.route('/feedback', methods=['POST', 'OPTIONS'])
 @auth_required
 def send_feedback_email():
-    """Send feedback email to support team with proper CORS handling"""
-    
-    # Handle preflight OPTIONS request
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin')
-        response.headers.add('Access-Control-Allow-Methods', 'POST,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '86400')
-        return response, 200
-    
+    """Send feedback email to support team"""
     try:
         data = request.get_json()
         user_info = request.current_user
@@ -227,12 +182,10 @@ def send_feedback_email():
         message = data.get('message', '')
         
         if not message.strip():
-            response = jsonify({
+            return jsonify({
                 'success': False,
                 'message': 'Feedback message is required'
-            })
-            response.status_code = 400
-            return response
+            }), 400
         
         success = email_service.send_feedback_email(
             user_email=user_email,
@@ -242,28 +195,22 @@ def send_feedback_email():
         )
         
         if success:
-            response = jsonify({
+            return jsonify({
                 'success': True,
                 'message': 'Feedback sent successfully'
-            })
-            response.status_code = 200
-            return response
+            }), 200
         else:
-            response = jsonify({
+            return jsonify({
                 'success': False,
                 'message': 'Failed to send feedback'
-            })
-            response.status_code = 500
-            return response
+            }), 500
             
     except Exception as e:
         logger.error(f"❌ Feedback email send failed: {str(e)}")
-        response = jsonify({
+        return jsonify({
             'success': False,
             'message': f'Feedback email failed: {str(e)}'
-        })
-        response.status_code = 500
-        return response
+        }), 500
 
 @email_bp.route('/templates', methods=['GET'])
 @auth_required
