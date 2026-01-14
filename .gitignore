@@ -6,3 +6,4 @@ venv/
 *.md
 __pycache__/
 seed_*.py
+*.conf
