@@ -116,18 +116,39 @@ class FirestoreService:
             logger.error(f"Error getting document {collection}/{doc_id}: {str(e)}")
             return None
     
-    def update_document(self, collection: str, doc_id: str, data: Dict) -> bool:
+    def update_document(self, collection: str, doc_id: str, data: Dict, create_if_missing: bool = False) -> bool:
         """Update a document in Firestore"""
+        logger.info(f"🔥 FirestoreService: Attempting to update document {collection}/{doc_id}")
+        logger.info(f"📋 Update data: {data}")
+        
         if not self._check_availability():
+            logger.warning(f"⚠️ Firestore not available - returning success for development mode")
             return True  # Return success for development mode
             
         try:
             doc_ref = self.db.collection(collection).document(doc_id)
-            doc_ref.update(data)
-            logger.info(f"Document updated: {collection}/{doc_id}")
+            
+            if create_if_missing:
+                # Use set with merge=True to create document if it doesn't exist
+                doc_ref.set(data, merge=True)
+                logger.info(f"✅ Document set with merge: {collection}/{doc_id}")
+            else:
+                # Use update (requires document to exist)
+                doc_ref.update(data)
+                logger.info(f"✅ Document updated: {collection}/{doc_id}")
             return True
         except Exception as e:
-            logger.error(f"Error updating document {collection}/{doc_id}: {str(e)}")
+            logger.error(f"❌ Error updating document {collection}/{doc_id}: {str(e)}")
+            # If update fails because document doesn't exist, try creating it
+            if "No document to update" in str(e) or "NOT_FOUND" in str(e):
+                try:
+                    logger.info(f"🔄 Document doesn't exist, creating new document: {collection}/{doc_id}")
+                    doc_ref.set(data, merge=True)
+                    logger.info(f"✅ Document created with merge: {collection}/{doc_id}")
+                    return True
+                except Exception as create_error:
+                    logger.error(f"❌ Error creating document {collection}/{doc_id}: {str(create_error)}")
+                    return False
             return False
     
     def delete_document(self, collection: str, doc_id: str) -> bool:

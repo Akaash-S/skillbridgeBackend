@@ -140,23 +140,30 @@ def update_target_role_state():
         uid = request.current_user['uid']
         data = request.get_json()
         
+        logger.info(f"🎯 Received target role update request for user {uid}")
+        logger.info(f"📋 Request data: {data}")
+        
         if not validate_required_fields(data, ['targetRole']):
+            logger.error(f"❌ Missing targetRole field in request: {data}")
             return jsonify({
                 'error': 'Missing required field: targetRole',
                 'code': 'VALIDATION_ERROR'
             }), 400
         
         target_role = data['targetRole']
+        logger.info(f"🎯 Updating target role for user {uid}: {target_role.get('title', 'Unknown')}")
         
         # Update target role in state
         success = state_manager.update_target_role(uid, target_role)
         
         if not success:
+            logger.error(f"❌ Failed to update target role state for user {uid}")
             return jsonify({
                 'error': 'Failed to update target role state',
                 'code': 'UPDATE_TARGET_ROLE_STATE_FAILED'
             }), 500
         
+        logger.info(f"✅ Target role updated successfully for user {uid}")
         return jsonify({
             'message': 'Target role state updated successfully',
             'targetRole': target_role

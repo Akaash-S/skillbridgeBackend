@@ -72,7 +72,8 @@ class UserStateManager:
                 'lastUpdated': datetime.utcnow()
             }
             
-            success = self.db_service.update_document('user_state', uid, update_data)
+            # Use create_if_missing=True to handle new users
+            success = self.db_service.update_document('user_state', uid, update_data, create_if_missing=True)
             if success:
                 logger.info(f"Updated skills for user {uid}")
             return success
@@ -84,18 +85,27 @@ class UserStateManager:
     def update_target_role(self, uid: str, role_data: Dict) -> bool:
         """Update user's target role in state"""
         try:
+            logger.info(f"🎯 UserStateManager: Updating target role for {uid}")
+            logger.info(f"📋 Role data: {role_data}")
+            
             update_data = {
                 'targetRole': role_data,
                 'lastUpdated': datetime.utcnow()
             }
             
-            success = self.db_service.update_document('user_state', uid, update_data)
+            logger.info(f"🔄 Calling db_service.update_document with data: {update_data}")
+            # Use create_if_missing=True to handle new users
+            success = self.db_service.update_document('user_state', uid, update_data, create_if_missing=True)
+            
             if success:
-                logger.info(f"Updated target role for user {uid}: {role_data.get('title', 'Unknown')}")
+                logger.info(f"✅ Target role updated successfully in database for user {uid}: {role_data.get('title', 'Unknown')}")
+            else:
+                logger.error(f"❌ Database update failed for user {uid}")
+                
             return success
             
         except Exception as e:
-            logger.error(f"Error updating target role for {uid}: {str(e)}")
+            logger.error(f"❌ Exception in update_target_role for {uid}: {str(e)}")
             return False
     
     def update_analysis_data(self, uid: str, analysis_data: Dict) -> bool:
@@ -107,7 +117,8 @@ class UserStateManager:
                 'lastUpdated': datetime.utcnow()
             }
             
-            success = self.db_service.update_document('user_state', uid, update_data)
+            # Use create_if_missing=True to handle new users
+            success = self.db_service.update_document('user_state', uid, update_data, create_if_missing=True)
             if success:
                 logger.info(f"Updated analysis data for user {uid}")
             return success
@@ -125,7 +136,8 @@ class UserStateManager:
                 'lastUpdated': datetime.utcnow()
             }
             
-            success = self.db_service.update_document('user_state', uid, update_data)
+            # Use create_if_missing=True to handle new users
+            success = self.db_service.update_document('user_state', uid, update_data, create_if_missing=True)
             if success:
                 logger.info(f"Updated roadmap progress for user {uid}")
             return success
