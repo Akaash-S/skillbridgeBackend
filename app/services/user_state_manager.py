@@ -260,38 +260,61 @@ class UserStateManager:
                 }
                 formatted_job_roles.append(formatted_role)
             
-            # Get target role analysis if available
+            # Get target role and validate it exists in available roles
             target_role = user_state.get('targetRole')
+            is_valid_role = target_role and any(role['id'] == target_role.get('id') for role in formatted_job_roles)
+            
+            # CRITICAL FIX: Validate roadmap matches current role
+            validated_user_state = user_state.copy()
+            if target_role and is_valid_role:
+                roadmap_progress = user_state.get('roadmapProgress')
+                if roadmap_progress:
+                    stored_roadmap_role = roadmap_progress.get('targetRole')
+                    current_role_id = target_role.get('id')
+                    
+                    # Only keep roadmap if it matches current role
+                    if stored_roadmap_role != current_role_id:
+                        logger.warning(f"🔄 Roadmap role mismatch for user {uid}: stored={stored_roadmap_role}, current={current_role_id}")
+                        logger.info(f"🧹 Clearing stale roadmap data for user {uid}")
+                        # Clear stale roadmap data
+                        validated_user_state['roadmapProgress'] = None
+                    else:
+                        logger.info(f"✅ Roadmap matches current role for user {uid}: {current_role_id}")
+            elif not is_valid_role and target_role:
+                logger.warning(f"⚠️ Invalid target role for user {uid}: {target_role.get('id', 'Unknown')}")
+                # Clear invalid role data
+                validated_user_state['targetRole'] = None
+                validated_user_state['roadmapProgress'] = None
+                validated_user_state['analysis'] = None
+            
+            # Get target role analysis if available and role is valid
             skill_gap_analysis = None
-            if target_role and formatted_user_skills:
+            if is_valid_role and formatted_user_skills:
                 skill_gap_analysis = self._perform_skill_gap_analysis(formatted_user_skills, target_role)
             
             # Sync user state with actual database data
-            if formatted_user_skills or target_role:
+            if formatted_user_skills or is_valid_role:
                 # Update user state to ensure it's in sync with database
                 updated_state = {
                     'skills': formatted_user_skills,
-                    'targetRole': target_role,
+                    'targetRole': target_role if is_valid_role else None,
                     'analysis': skill_gap_analysis,
                     'lastSynced': datetime.utcnow()
                 }
                 
-                # Merge with existing state
-                if user_state:
-                    user_state.update(updated_state)
-                else:
-                    user_state = updated_state
+                # Merge with existing validated state
+                validated_user_state.update(updated_state)
                 
                 # Save updated state back to database
-                self.save_user_state(uid, user_state)
+                self.save_user_state(uid, validated_user_state)
             
             return {
-                'userState': user_state,
+                'userState': validated_user_state,
                 'userSkills': formatted_user_skills,
                 'masterSkills': formatted_master_skills,
                 'jobRoles': formatted_job_roles,
                 'skillGapAnalysis': skill_gap_analysis,
-                'hasData': len(formatted_user_skills) > 0 or target_role is not None
+                'hasData': len(formatted_user_skills) > 0 or is_valid_role
             }
             
         except Exception as e:
