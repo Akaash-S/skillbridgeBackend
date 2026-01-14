@@ -29,6 +29,43 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+# Check Docker version compatibility
+check_docker_version() {
+    print_status "Checking Docker version compatibility..."
+    
+    if ! command -v docker &> /dev/null; then
+        print_error "Docker is not installed"
+        echo "Run: ./fix-docker-version.sh"
+        exit 1
+    fi
+    
+    # Try docker compose plugin first (newer approach)
+    if docker compose version &> /dev/null; then
+        print_success "Using Docker Compose plugin"
+        DOCKER_COMPOSE_CMD="docker compose"
+        return 0
+    fi
+    
+    # Fall back to docker-compose standalone
+    if command -v docker-compose &> /dev/null; then
+        # Test if docker-compose works
+        if docker-compose --version &> /dev/null; then
+            print_success "Using Docker Compose standalone"
+            DOCKER_COMPOSE_CMD="docker-compose"
+            return 0
+        else
+            print_error "Docker Compose version is incompatible"
+            echo "Error: client version is too old"
+            echo "Fix: ./fix-docker-version.sh or ./quick-docker-fix.sh"
+            exit 1
+        fi
+    fi
+    
+    print_error "Docker Compose not found"
+    echo "Fix: ./fix-docker-version.sh"
+    exit 1
+}
+
 # Check if we're in the backend directory
 print_status "Current directory: $(pwd)"
 if [ ! -f "docker-compose.yml" ] || [ ! -f "Dockerfile" ]; then
@@ -37,6 +74,9 @@ if [ ! -f "docker-compose.yml" ] || [ ! -f "Dockerfile" ]; then
     echo "cd /opt/skillbridge/backend && ./deploy-gce.sh"
     exit 1
 fi
+
+# Check Docker version
+check_docker_version
 
 # Check if .env file exists
 if [ ! -f ".env" ]; then
@@ -79,11 +119,11 @@ print_success "Environment validation passed"
 
 # Stop existing containers
 print_status "Stopping existing containers..."
-docker-compose down --remove-orphans
+$DOCKER_COMPOSE_CMD down --remove-orphans
 
 # Build and start backend
 print_status "Building and starting backend container..."
-docker-compose up -d --build
+$DOCKER_COMPOSE_CMD up -d --build
 
 # Wait for container to start
 print_status "Waiting for backend to start..."
@@ -91,7 +131,7 @@ sleep 15
 
 # Check container status
 print_status "Checking container status..."
-docker-compose ps
+$DOCKER_COMPOSE_CMD ps
 
 # Health check
 print_status "Testing backend health..."
@@ -108,12 +148,13 @@ while [ $attempt -le $max_attempts ]; do
         print_error "Backend health check failed after $max_attempts attempts"
         echo ""
         echo "📋 Container logs:"
-        docker-compose logs --tail=50
+        $DOCKER_COMPOSE_CMD logs --tail=50
         echo ""
         echo "🔧 Troubleshooting:"
-        echo "1. Check logs: docker-compose logs"
-        echo "2. Check container: docker-compose ps"
+        echo "1. Check logs: $DOCKER_COMPOSE_CMD logs"
+        echo "2. Check container: $DOCKER_COMPOSE_CMD ps"
         echo "3. Check port: netstat -tlnp | grep :8080"
+        echo "4. Fix Docker version: ./fix-docker-version.sh"
         exit 1
     fi
     
@@ -135,17 +176,18 @@ echo "   Container: skillbridge-backend"
 echo "   Port: 8080"
 echo "   Health: http://localhost:8080/health"
 echo "   External: https://skillbridge-server.asolvitra.tech"
+echo "   Docker Compose: $DOCKER_COMPOSE_CMD"
 echo ""
 echo "🔧 Management Commands:"
-echo "   View logs: docker-compose logs -f"
-echo "   Restart: docker-compose restart"
-echo "   Stop: docker-compose down"
-echo "   Status: docker-compose ps"
+echo "   View logs: $DOCKER_COMPOSE_CMD logs -f"
+echo "   Restart: $DOCKER_COMPOSE_CMD restart"
+echo "   Stop: $DOCKER_COMPOSE_CMD down"
+echo "   Status: $DOCKER_COMPOSE_CMD ps"
 echo ""
 echo "🌐 Next Steps:"
 echo "1. Ensure Nginx is configured and running"
 echo "2. Test external access: curl -I https://skillbridge-server.asolvitra.tech/health"
-echo "3. Monitor logs: docker-compose logs -f"
+echo "3. Monitor logs: $DOCKER_COMPOSE_CMD logs -f"
 echo ""
 
 # Final test of external endpoint (if accessible)
