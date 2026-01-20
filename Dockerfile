@@ -24,7 +24,7 @@ RUN apt-get update \
 COPY requirements.txt requirements-minimal.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip \
+RUN python -m pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir gunicorn
 

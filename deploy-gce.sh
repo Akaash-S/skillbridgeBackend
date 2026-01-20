@@ -100,6 +100,7 @@ required_vars=(
     "SMTP_HOST"
     "SMTP_USER"
     "SMTP_PASSWORD"
+    "CORS_ORIGINS"
 )
 
 missing_vars=()

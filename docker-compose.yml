@@ -4,34 +4,34 @@ services:
   skillbridge-backend:
     build: .
     ports:
-      - "8080:8080"  # Changed from 8000 to 8080 for GCE deployment
+      - "8080:8080"
     environment:
       - FLASK_ENV=production
-      - PORT=8080  # Changed from 8000 to 8080
+      - PORT=8080
       - SECRET_KEY=${SECRET_KEY}
       - FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64}
       - DISABLE_FIREBASE=${DISABLE_FIREBASE:-false}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}  # Added missing YouTube API key
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
       - ADZUNA_APP_ID=${ADZUNA_APP_ID}
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY}
-      - MFA_ISSUER_NAME=${MFA_ISSUER_NAME}  # Added MFA configuration
+      - MFA_ISSUER_NAME=${MFA_ISSUER_NAME}
       - MFA_SECRET_KEY=${MFA_SECRET_KEY}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_USE_TLS=${SMTP_USE_TLS}
-      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME}  # Added email configuration
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
       - EMAIL_SUPPORT=${EMAIL_SUPPORT}
       - EMAIL_RATE_LIMIT=${EMAIL_RATE_LIMIT}
       - EMAIL_BATCH_SIZE=${EMAIL_BATCH_SIZE}
-      - CORS_ORIGINS=https://skillbridge.asolvitra.tech,https://www.skillbridge.asolvitra.tech  # Updated for your domains
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://skillbridge.asolvitra.tech,https://www.skillbridge.asolvitra.tech}
     volumes:
-      - ./logs:/app/logs  # Changed to relative path for better portability
+      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # Updated port
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
