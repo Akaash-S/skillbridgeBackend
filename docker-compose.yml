@@ -55,7 +55,7 @@ services:
       - ./logs:/app/logs
       - ./nginx/ssl:/etc/nginx/ssl
       # Let's Encrypt certificates (if using)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /etc/letsencrypt:/etc/letsencrypt
       # Supervisor logs
       - supervisor_logs:/var/log/supervisor
       
