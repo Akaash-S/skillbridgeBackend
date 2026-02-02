@@ -43,17 +43,16 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 # Copy application code
 COPY . .
 
-# Copy configuration files
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
-COPY nginx/conf.d/security.conf /etc/nginx/conf.d/security.conf
-COPY gunicorn.conf.py /app/gunicorn.conf.py
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Copy configuration files to system locations
+RUN cp nginx/nginx.conf /etc/nginx/nginx.conf \
+    && cp nginx/conf.d/security.conf /etc/nginx/conf.d/security.conf \
+    && cp supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/logs /var/log/nginx /var/log/supervisor /run/nginx /var/lib/redis \
+RUN mkdir -p /app/logs /var/log/nginx /var/log/supervisor /var/log/redis /run/nginx /var/lib/redis /etc/nginx/conf.d /etc/supervisor/conf.d \
     && chown -R appuser:appgroup /app \
     && chown -R www-data:www-data /var/log/nginx \
-    && chown -R redis:redis /var/lib/redis \
+    && chown -R redis:redis /var/lib/redis /var/log/redis \
     && chmod -R 755 /app \
     && chmod -R 777 /app/logs
 
