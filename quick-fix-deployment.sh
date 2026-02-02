@@ -1,64 +1,70 @@
 #!/bin/bash
 
-# GCP Compute Engine Startup Script
-# This script will run when the instance starts up
+# Quick fix script for GCP deployment
+# Run this if the startup script failed to find the backend directory
 
 set -e
 
-echo "🚀 Starting SkillBridge deployment on GCP Compute Engine..."
+echo "🔧 SkillBridge Deployment Quick Fix"
+echo "=================================="
+echo ""
 
-# Update system
-apt-get update
-apt-get upgrade -y
+# Find the application directory
+APP_DIR=""
+SEARCH_DIRS=(
+    "/opt/skillbridge"
+    "/opt/skillbridge/backend"
+    "/home/$(whoami)"
+    "/home/$(whoami)/skillbridge"
+    "/home/$(whoami)/skillbridge/backend"
+    "/home/$(whoami)/skillbridgeBackend"
+    "/home/$(whoami)/skillbridgeBackend/backend"
+)
 
-# Install Docker
-if ! command -v docker &> /dev/null; then
-    echo "📦 Installing Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-    usermod -aG docker $(whoami)
+echo "🔍 Searching for application files..."
+for dir in "${SEARCH_DIRS[@]}"; do
+    if [ -d "$dir" ] && [ -f "$dir/Dockerfile" ] && [ -f "$dir/docker-compose.yml" ]; then
+        APP_DIR="$dir"
+        echo "✅ Found application at: $APP_DIR"
+        break
+    fi
+done
+
+if [ -z "$APP_DIR" ]; then
+    echo "❌ Could not find application files. Let's set it up manually..."
+    
+    # Create directory and clone repository
+    sudo mkdir -p /opt/skillbridge
+    cd /opt/skillbridge
+    
+    if [ ! -d ".git" ]; then
+        echo "📥 Cloning repository..."
+        sudo git clone https://github.com/Akaash-S/skillbridgeBackend.git .
+    fi
+    
+    # Check if files are in backend subdirectory or root
+    if [ -d "backend" ] && [ -f "backend/Dockerfile" ]; then
+        APP_DIR="/opt/skillbridge/backend"
+        cd backend
+    elif [ -f "Dockerfile" ]; then
+        APP_DIR="/opt/skillbridge"
+    else
+        echo "❌ Repository structure is unexpected. Please check manually."
+        ls -la
+        exit 1
+    fi
+    
+    echo "✅ Application set up at: $APP_DIR"
 fi
 
-# Install Docker Compose
-if ! command -v docker-compose &> /dev/null; then
-    echo "📦 Installing Docker Compose..."
-    curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
-fi
+# Navigate to application directory
+cd "$APP_DIR"
+echo "📍 Working in: $(pwd)"
 
-# Create application directory
-mkdir -p /opt/skillbridge
-cd /opt/skillbridge
-
-# Clone repository (replace with your repository URL)
-if [ ! -d ".git" ]; then
-    echo "📥 Cloning repository..."
-    git clone https://github.com/Akaash-S/skillbridgeBackend.git .
-fi
-
-# Check if we have a backend directory or if files are in root
-if [ -d "backend" ]; then
-    echo "📁 Found backend directory, navigating to it..."
-    cd backend
-elif [ -f "Dockerfile" ] && [ -f "docker-compose.yml" ]; then
-    echo "📁 Backend files found in root directory..."
-    # Files are in root, stay here
-else
-    echo "❌ Could not find backend files. Checking repository structure..."
-    ls -la
-    echo ""
-    echo "Please check your repository structure. Expected either:"
-    echo "  - backend/ directory with Dockerfile and docker-compose.yml"
-    echo "  - Dockerfile and docker-compose.yml in root directory"
-    exit 1
-fi
-
-echo "📍 Current directory: $(pwd)"
-echo "📋 Files found:"
-ls -la
-
-# Create environment file template
-cat > .env << 'EOF'
+# Create .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    echo "📝 Creating .env template..."
+    cat > .env << 'EOF'
 # Application Settings
 SECRET_KEY=your-super-secret-key-change-this-in-production
 FLASK_ENV=production
@@ -101,41 +107,15 @@ REDIS_PASSWORD=secure-redis-password-change-this
 GOOGLE_CLOUD_PROJECT=your-project-id
 GCP_REGION=us-central1
 EOF
+fi
 
-echo ""
-echo "🔧 CONFIGURATION REQUIRED!"
-echo "=========================================="
-echo ""
-echo "📝 A template .env file has been created at:"
-echo "   $(pwd)/.env"
-echo ""
-echo "⚠️  IMPORTANT: You MUST edit this file with your actual configuration!"
-echo ""
-echo "📋 Required steps:"
-echo "   1. SSH into this instance: gcloud compute ssh $(hostname)"
-echo "   2. Navigate to: cd $(pwd)"
-echo "   3. Edit configuration: nano .env"
-echo "   4. Replace ALL placeholder values with your actual:"
-echo "      - SECRET_KEY (generate a secure random key)"
-echo "      - DOMAIN (your actual domain name)"
-echo "      - SSL_EMAIL (your email for SSL certificates)"
-echo "      - FIREBASE_SERVICE_ACCOUNT_BASE64 (from Firebase Console)"
-echo "      - API keys (Gemini, YouTube, Adzuna, etc.)"
-echo "      - Email settings (SMTP credentials)"
-echo "      - REDIS_PASSWORD (secure password)"
-echo "      - CORS_ORIGINS (your frontend domain)"
-echo "   5. Save and exit (Ctrl+X, then Y, then Enter)"
-echo "   6. Run the continuation script: ./continue-deployment.sh"
-echo ""
-echo "💡 Tip: You can also use the helper script: ./edit-config.sh"
-echo ""
-
-# Create continuation script
-cat > continue-deployment.sh << 'CONTINUE_EOF'
+# Create continuation script if it doesn't exist
+if [ ! -f "continue-deployment.sh" ]; then
+    echo "📜 Creating continuation script..."
+    cat > continue-deployment.sh << 'CONTINUE_EOF'
 #!/bin/bash
 
 # Continuation of GCP deployment after .env configuration
-# This script runs after the user has configured their .env file
 
 set -e
 
@@ -188,14 +168,10 @@ docker-compose up -d
 
 # Configure firewall
 echo "🛡️  Configuring firewall..."
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 22/tcp
-ufw deny 8080/tcp
-ufw deny 6379/tcp
-ufw --force enable
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw deny 8080/tcp
+sudo ufw deny 6379/tcp
 
 # Setup GCP firewall rules
 echo "🔧 Setting up GCP firewall rules..."
@@ -265,21 +241,56 @@ echo "   Stop service: docker-compose down"
 echo "   Restart:      docker-compose restart"
 echo "   Check health: curl -f http://localhost/health"
 echo ""
-echo "🔍 Troubleshooting:"
-echo "   If health check fails, check logs: docker-compose logs"
-echo "   If containers won't start, check .env file: cat .env"
-echo ""
 CONTINUE_EOF
 
-# Make continuation script executable
-chmod +x continue-deployment.sh
+    chmod +x continue-deployment.sh
+fi
 
-echo "📜 Created continuation script: continue-deployment.sh"
+# Create edit helper script
+if [ ! -f "edit-config.sh" ]; then
+    echo "📝 Creating configuration helper..."
+    cat > edit-config.sh << 'EDIT_EOF'
+#!/bin/bash
+
+echo "🔧 Opening .env configuration file..."
 echo ""
-echo "🚀 TO CONTINUE DEPLOYMENT:"
-echo "   1. SSH into this instance: gcloud compute ssh $(hostname)"
-echo "   2. Navigate to application: cd $(pwd)"
-echo "   3. Edit your configuration: nano .env (or ./edit-config.sh)"
-echo "   4. Run continuation script: ./continue-deployment.sh"
+echo "📝 Please update the following required values:"
+echo "   - SECRET_KEY (generate a secure random key)"
+echo "   - DOMAIN (your actual domain name)"
+echo "   - SSL_EMAIL (your email for SSL certificates)"
+echo "   - FIREBASE_SERVICE_ACCOUNT_BASE64"
+echo "   - API keys (Gemini, YouTube, etc.)"
+echo "   - Email settings (SMTP credentials)"
+echo "   - REDIS_PASSWORD"
+echo "   - CORS_ORIGINS (your frontend domain)"
 echo ""
-echo "⏹️  Startup script paused. Please configure your .env file and run the continuation script."
+echo "💡 Tip: Use Ctrl+X, then Y, then Enter to save and exit"
+echo ""
+read -p "Press Enter to open the .env file for editing..."
+
+nano .env
+
+echo ""
+echo "✅ Configuration file updated!"
+echo ""
+echo "🚀 Next steps:"
+echo "   1. Run the continuation script: ./continue-deployment.sh"
+echo ""
+EDIT_EOF
+
+    chmod +x edit-config.sh
+fi
+
+echo ""
+echo "🎉 Quick fix completed!"
+echo "======================"
+echo ""
+echo "📍 Application directory: $APP_DIR"
+echo "📝 Configuration file: $APP_DIR/.env"
+echo ""
+echo "🚀 Next steps:"
+echo "   1. Edit your configuration: nano .env (or ./edit-config.sh)"
+echo "   2. Run deployment: ./continue-deployment.sh"
+echo ""
+echo "📋 Files available:"
+ls -la | grep -E "(\.env|continue-deployment|edit-config|docker-compose|Dockerfile)"
