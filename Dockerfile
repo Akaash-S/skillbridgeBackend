@@ -1,5 +1,5 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+# Multi-stage production Dockerfile for GCP Compute Engine
+FROM python:3.11-slim as base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -8,9 +8,6 @@ ENV FLASK_APP=app.main:app
 ENV FLASK_ENV=production
 ENV PORT=8080
 
-# Set work directory
-WORKDIR /app
-
 # Install system dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -18,7 +15,22 @@ RUN apt-get update \
         g++ \
         curl \
         git \
-    && rm -rf /var/lib/apt/lists/*
+        ca-certificates \
+        nginx \
+        supervisor \
+        cron \
+        redis-server \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create application user
+RUN addgroup --system --gid 1001 appgroup \
+    && adduser --system --uid 1001 --gid 1001 --no-create-home appuser \
+    && usermod -aG redis appuser
+
+# Set work directory
+WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt requirements-minimal.txt ./
@@ -26,22 +38,45 @@ COPY requirements.txt requirements-minimal.txt ./
 # Install Python dependencies
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir gunicorn
+    && pip install --no-cache-dir gunicorn[gevent]==21.2.0
 
 # Copy application code
 COPY . .
 
-# Create non-root user for security
-RUN adduser --disabled-password --gecos '' appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+# Copy configuration files
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY nginx/conf.d/security.conf /etc/nginx/conf.d/security.conf
+COPY gunicorn.conf.py /app/gunicorn.conf.py
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port (GCP Cloud Run uses PORT env variable)
-EXPOSE $PORT
+# Create necessary directories and set permissions
+RUN mkdir -p /app/logs /var/log/nginx /var/log/supervisor /run/nginx /var/lib/redis \
+    && chown -R appuser:appgroup /app \
+    && chown -R www-data:www-data /var/log/nginx \
+    && chown -R redis:redis /var/lib/redis \
+    && chmod -R 755 /app \
+    && chmod -R 777 /app/logs
+
+# Generate self-signed SSL certificates for initial setup
+RUN mkdir -p /etc/nginx/ssl \
+    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/nginx/ssl/privkey.pem \
+        -out /etc/nginx/ssl/fullchain.pem \
+        -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" \
+    && cp /etc/nginx/ssl/fullchain.pem /etc/nginx/ssl/chain.pem \
+    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/nginx/ssl/default.key \
+        -out /etc/nginx/ssl/default.crt \
+        -subj "/C=US/ST=State/L=City/O=Default/CN=default" \
+    && chmod 600 /etc/nginx/ssl/*.pem /etc/nginx/ssl/*.key \
+    && chmod 644 /etc/nginx/ssl/*.crt
+
+# Expose ports
+EXPOSE 80 443
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:$PORT/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
 
-# Run gunicorn with dynamic port binding for GCP
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 --keep-alive 2 --max-requests 1000 --max-requests-jitter 50 app.main:app
+# Use supervisor to manage multiple processes
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
