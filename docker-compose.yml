@@ -7,8 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: skillbridge-app
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:8000"
+      - "8000:8000"
     environment:
       # Flask Configuration
       - SECRET_KEY=${SECRET_KEY}
@@ -52,14 +52,11 @@ services:
     volumes:
       # Persistent logs
       - ./logs:/app/logs
-      - ./nginx/ssl:/etc/nginx/ssl
-      # Let's Encrypt certificates (if using)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
       
     restart: unless-stopped
     
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
