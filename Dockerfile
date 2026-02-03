@@ -1,12 +1,12 @@
 # Multi-stage production Dockerfile for GCP Compute Engine
-FROM python:3.11-slim as base
+FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.main:app
 ENV FLASK_ENV=production
-ENV PORT=8080
+ENV PORT=8000
 
 # Install system dependencies
 RUN apt-get update \
@@ -18,16 +18,15 @@ RUN apt-get update \
         ca-certificates \
         nginx \
         supervisor \
-        cron \
         redis-server \
+        openssl \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Create application user
 RUN addgroup --system --gid 1001 appgroup \
-    && adduser --system --uid 1001 --gid 1001 --no-create-home appuser \
-    && usermod -aG redis appuser
+    && adduser --system --uid 1001 --gid 1001 --no-create-home appuser
 
 # Set work directory
 WORKDIR /app
@@ -40,74 +39,57 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir gunicorn[gevent]==21.2.0
 
-# Create default gunicorn config if it doesn't exist
-RUN if [ ! -f gunicorn.conf.py ]; then \
-        echo "Creating default gunicorn.conf.py..."; \
-        cat > gunicorn.conf.py << 'EOF'
-import multiprocessing
-import os
-
-bind = f"0.0.0.0:{os.environ.get('PORT', 8080)}"
-workers = multiprocessing.cpu_count() * 2 + 1
-worker_class = "gevent"
-worker_connections = 1000
-max_requests = 1000
-max_requests_jitter = 100
-timeout = 30
-keepalive = 5
-preload_app = True
-accesslog = "/app/logs/gunicorn-access.log"
-errorlog = "/app/logs/gunicorn-error.log"
-loglevel = "info"
-capture_output = True
-EOF
-    fi
-
 # Copy application code
 COPY . .
 
-# Create configuration files if they don't exist, then copy them
-RUN mkdir -p /etc/nginx/conf.d /etc/supervisor/conf.d \
+# Create default configuration files
+RUN mkdir -p /etc/nginx/conf.d /etc/supervisor/conf.d /app/logs \
     && if [ -f nginx/nginx.conf ]; then \
         cp nginx/nginx.conf /etc/nginx/nginx.conf; \
     else \
-        echo "Creating default nginx.conf..."; \
-        cat > /etc/nginx/nginx.conf << 'EOF'
+        cat > /etc/nginx/nginx.conf << 'NGINX_EOF'
 user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
 
 events {
-    worker_connections 768;
+    worker_connections 1024;
 }
 
 http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
     sendfile on;
     tcp_nopush on;
     tcp_nodelay on;
     keepalive_timeout 65;
-    types_hash_max_size 2048;
     server_tokens off;
-
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
+    
     access_log /var/log/nginx/access.log;
     error_log /var/log/nginx/error.log;
-
+    
     gzip on;
-
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    
     upstream backend {
-        server 127.0.0.1:8080;
+        server 127.0.0.1:8000;
     }
-
+    
     server {
         listen 80 default_server;
         listen 443 ssl default_server;
         
         ssl_certificate /etc/nginx/ssl/fullchain.pem;
         ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+        
+        location /health {
+            proxy_pass http://backend/health;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
         
         location / {
             proxy_pass http://backend;
@@ -118,16 +100,14 @@ http {
         }
     }
 }
-EOF
-    fi \
-    && if [ -f nginx/conf.d/security.conf ]; then \
-        cp nginx/conf.d/security.conf /etc/nginx/conf.d/security.conf; \
-    fi \
-    && if [ -f supervisord.conf ]; then \
+NGINX_EOF
+    fi
+
+# Create supervisor configuration
+RUN if [ -f supervisord.conf ]; then \
         cp supervisord.conf /etc/supervisor/conf.d/supervisord.conf; \
     else \
-        echo "Creating default supervisord.conf..."; \
-        cat > /etc/supervisor/conf.d/supervisord.conf << 'EOF'
+        cat > /etc/supervisor/conf.d/supervisord.conf << 'SUPERVISOR_EOF'
 [supervisord]
 nodaemon=true
 user=root
@@ -143,7 +123,7 @@ stdout_logfile=/var/log/supervisor/nginx.log
 stderr_logfile=/var/log/supervisor/nginx.log
 
 [program:gunicorn]
-command=/usr/local/bin/gunicorn --config /app/gunicorn.conf.py app.main:app
+command=/usr/local/bin/gunicorn --bind 127.0.0.1:8000 --workers 4 --worker-class gevent --timeout 30 --keep-alive 5 --max-requests 1000 --access-logfile /app/logs/gunicorn-access.log --error-logfile /app/logs/gunicorn-error.log --log-level info app.main:app
 directory=/app
 autostart=true
 autorestart=true
@@ -169,30 +149,24 @@ serverurl=unix:///var/run/supervisor.sock
 
 [rpcinterface:supervisor]
 supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-EOF
+SUPERVISOR_EOF
     fi
 
-# Create necessary directories and set permissions
-RUN mkdir -p /app/logs /var/log/nginx /var/log/supervisor /var/log/redis /run/nginx /var/lib/redis /etc/nginx/conf.d /etc/supervisor/conf.d \
-    && chown -R appuser:appgroup /app \
+# Set permissions
+RUN chown -R appuser:appgroup /app \
     && chown -R www-data:www-data /var/log/nginx \
-    && chown -R redis:redis /var/lib/redis /var/log/redis \
+    && chown -R redis:redis /var/lib/redis \
     && chmod -R 755 /app \
     && chmod -R 777 /app/logs
 
-# Generate self-signed SSL certificates for initial setup
+# Generate self-signed SSL certificates
 RUN mkdir -p /etc/nginx/ssl \
     && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/nginx/ssl/privkey.pem \
         -out /etc/nginx/ssl/fullchain.pem \
         -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" \
     && cp /etc/nginx/ssl/fullchain.pem /etc/nginx/ssl/chain.pem \
-    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/nginx/ssl/default.key \
-        -out /etc/nginx/ssl/default.crt \
-        -subj "/C=US/ST=State/L=City/O=Default/CN=default" \
-    && chmod 600 /etc/nginx/ssl/*.pem /etc/nginx/ssl/*.key \
-    && chmod 644 /etc/nginx/ssl/*.crt
+    && chmod 600 /etc/nginx/ssl/*.pem
 
 # Expose ports
 EXPOSE 80 443

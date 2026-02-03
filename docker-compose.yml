@@ -10,54 +10,51 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Application Settings
-      - FLASK_ENV=production
-      - PORT=8080
+      # Flask Configuration
       - SECRET_KEY=${SECRET_KEY}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      
+      # Production Port Configuration
+      - PORT=${PORT:-8000}
       
       # Firebase Configuration
       - FIREBASE_SERVICE_ACCOUNT_BASE64=${FIREBASE_SERVICE_ACCOUNT_BASE64}
       - DISABLE_FIREBASE=${DISABLE_FIREBASE:-false}
       
-      # API Keys
+      # Gemini AI Configuration
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      
+      # Adzuna Jobs API Configuration
       - ADZUNA_APP_ID=${ADZUNA_APP_ID}
       - ADZUNA_APP_KEY=${ADZUNA_APP_KEY}
       
       # MFA Configuration
-      - MFA_ISSUER_NAME=${MFA_ISSUER_NAME:-SkillBridge}
+      - MFA_ISSUER_NAME=${MFA_ISSUER_NAME}
       - MFA_SECRET_KEY=${MFA_SECRET_KEY}
       
-      # Email Configuration
-      - SMTP_HOST=${SMTP_HOST}
+      # SMTP Email Configuration
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
-      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-SkillBridge}
+      
+      # Email Settings
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
       - EMAIL_SUPPORT=${EMAIL_SUPPORT}
-      - EMAIL_RATE_LIMIT=${EMAIL_RATE_LIMIT:-10}
-      - EMAIL_BATCH_SIZE=${EMAIL_BATCH_SIZE:-50}
+      - EMAIL_RATE_LIMIT=${EMAIL_RATE_LIMIT}
+      - EMAIL_BATCH_SIZE=${EMAIL_BATCH_SIZE}
       
       # CORS Configuration
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://skillbridge.asolvitra.tech,https://www.skillbridge.asolvitra.tech}
-      
-      # Redis Configuration
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-changeme123}
-      
-      # GCP Specific
-      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
-      - GCP_REGION=${GCP_REGION:-us-central1}
+      - CORS_ORIGINS=${CORS_ORIGINS}
       
     volumes:
       # Persistent logs
       - ./logs:/app/logs
       - ./nginx/ssl:/etc/nginx/ssl
       # Let's Encrypt certificates (if using)
-      - /etc/letsencrypt:/etc/letsencrypt
-      # Supervisor logs
-      - supervisor_logs:/var/log/supervisor
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       
     restart: unless-stopped
     
@@ -73,19 +70,6 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-        
-    # Resource limits for GCP Compute Engine
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '1.0'
-        reservations:
-          memory: 1G
-          cpus: '0.5'
-
-volumes:
-  supervisor_logs:
 
 networks:
   default:
