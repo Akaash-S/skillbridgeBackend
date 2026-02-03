@@ -67,21 +67,33 @@ RUN echo "user www-data;" > /etc/nginx/nginx.conf && \
 RUN echo "server {" > /etc/nginx/sites-available/skillbridge && \
     echo "    listen 80 default_server;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    listen 443 ssl default_server;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    " >> /etc/nginx/sites-available/skillbridge && \
     echo "    ssl_certificate /etc/nginx/ssl/fullchain.pem;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    ssl_certificate_key /etc/nginx/ssl/privkey.pem;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    " >> /etc/nginx/sites-available/skillbridge && \
+    echo "    # Health check endpoint" >> /etc/nginx/sites-available/skillbridge && \
     echo "    location /health {" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_pass http://127.0.0.1:8000/health;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_connect_timeout 5s;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_read_timeout 10s;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    }" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    " >> /etc/nginx/sites-available/skillbridge && \
+    echo "    # Main application" >> /etc/nginx/sites-available/skillbridge && \
     echo "    location / {" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_pass http://127.0.0.1:8000;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_connect_timeout 10s;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_read_timeout 30s;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_send_timeout 30s;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    }" >> /etc/nginx/sites-available/skillbridge && \
     echo "}" >> /etc/nginx/sites-available/skillbridge
 
@@ -136,7 +148,9 @@ RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/privkey.pem \
     -out /etc/nginx/ssl/fullchain.pem \
     -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" && \
-    chmod 600 /etc/nginx/ssl/*.pem
+    chmod 644 /etc/nginx/ssl/fullchain.pem && \
+    chmod 600 /etc/nginx/ssl/privkey.pem && \
+    chown www-data:www-data /etc/nginx/ssl/*.pem
 
 # Set permissions
 RUN chown -R appuser:appgroup /app && \
