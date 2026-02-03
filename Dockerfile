@@ -26,8 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir gunicorn==21.2.0
 
-# Copy application code
-COPY . .
+# Copy only the application code (excluding nginx, scripts, etc.)
+COPY app/ ./app/
+COPY .env ./
 
 # Expose port
 EXPOSE 8000
@@ -36,5 +37,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Start Gunicorn with minimal configuration (no file logging, runs as root)
+# Start Gunicorn with minimal configuration
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "30", "--log-level", "info", "app.main:app"]
