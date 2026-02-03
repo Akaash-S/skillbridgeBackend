@@ -8,7 +8,7 @@ ENV FLASK_APP=app.main:app
 ENV FLASK_ENV=production
 ENV PORT=8000
 
-# Install system dependencies
+# Install system dependencies (removed redis-server)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     nginx \
     supervisor \
-    redis-server \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,13 +30,16 @@ WORKDIR /app
 COPY requirements.txt requirements-minimal.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir gunicorn[gevent]==21.2.0
+    pip install --no-cache-dir gunicorn==21.2.0
 
 # Copy application code
 COPY . .
 
 # Create necessary directories
 RUN mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/ssl /app/logs /var/log/supervisor
+
+# Remove default nginx site
+RUN rm -f /etc/nginx/sites-enabled/default
 
 # Create nginx main configuration
 RUN echo "user www-data;" > /etc/nginx/nginx.conf && \
@@ -67,40 +69,38 @@ RUN echo "user www-data;" > /etc/nginx/nginx.conf && \
 RUN echo "server {" > /etc/nginx/sites-available/skillbridge && \
     echo "    listen 80 default_server;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    listen 443 ssl default_server;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "    " >> /etc/nginx/sites-available/skillbridge && \
     echo "    ssl_certificate /etc/nginx/ssl/fullchain.pem;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    ssl_certificate_key /etc/nginx/ssl/privkey.pem;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "    ssl_protocols TLSv1.2 TLSv1.3;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "    ssl_ciphers HIGH:!aNULL:!MD5;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "    " >> /etc/nginx/sites-available/skillbridge && \
-    echo "    # Health check endpoint" >> /etc/nginx/sites-available/skillbridge && \
     echo "    location /health {" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_pass http://127.0.0.1:8000/health;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "        proxy_connect_timeout 5s;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "        proxy_read_timeout 10s;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    }" >> /etc/nginx/sites-available/skillbridge && \
-    echo "    " >> /etc/nginx/sites-available/skillbridge && \
-    echo "    # Main application" >> /etc/nginx/sites-available/skillbridge && \
     echo "    location / {" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_pass http://127.0.0.1:8000;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
     echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "        proxy_connect_timeout 10s;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "        proxy_read_timeout 30s;" >> /etc/nginx/sites-available/skillbridge && \
-    echo "        proxy_send_timeout 30s;" >> /etc/nginx/sites-available/skillbridge && \
     echo "    }" >> /etc/nginx/sites-available/skillbridge && \
     echo "}" >> /etc/nginx/sites-available/skillbridge
 
 # Enable the site
 RUN ln -sf /etc/nginx/sites-available/skillbridge /etc/nginx/sites-enabled/
 
-# Create supervisor configuration
+# Test nginx configuration
+RUN nginx -t
+
+# Generate self-signed SSL certificates
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/privkey.pem \
+    -out /etc/nginx/ssl/fullchain.pem \
+    -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" && \
+    chmod 600 /etc/nginx/ssl/*.pem
+
+# Create supervisor configuration (without Redis)
 RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
     echo "nodaemon=true" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "user=root" >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -116,7 +116,7 @@ RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
     echo "stderr_logfile=/var/log/supervisor/nginx.log" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "[program:gunicorn]" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "command=/usr/local/bin/gunicorn --bind 127.0.0.1:8000 --workers 4 --worker-class gevent --timeout 30 --keep-alive 5 --max-requests 1000 --access-logfile /app/logs/gunicorn-access.log --error-logfile /app/logs/gunicorn-error.log --log-level info app.main:app" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "command=/usr/local/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --worker-class sync --timeout 30 --keep-alive 5 --max-requests 1000 --access-logfile /app/logs/gunicorn-access.log --error-logfile /app/logs/gunicorn-error.log --log-level info app.main:app" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "directory=/app" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "autostart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "autorestart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -124,14 +124,6 @@ RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
     echo "stdout_logfile=/var/log/supervisor/gunicorn.log" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "stderr_logfile=/var/log/supervisor/gunicorn.log" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "environment=PATH=\"/usr/local/bin:%(ENV_PATH)s\"" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "[program:redis]" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "command=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --daemonize no" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "autostart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "autorestart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "user=redis" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "stdout_logfile=/var/log/supervisor/redis.log" >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo "stderr_logfile=/var/log/supervisor/redis.log" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "[unix_http_server]" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "file=/var/run/supervisor.sock" >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -142,15 +134,6 @@ RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
     echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "[rpcinterface:supervisor]" >> /etc/supervisor/conf.d/supervisord.conf && \
     echo "supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface" >> /etc/supervisor/conf.d/supervisord.conf
-
-# Generate self-signed SSL certificates
-RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/nginx/ssl/privkey.pem \
-    -out /etc/nginx/ssl/fullchain.pem \
-    -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" && \
-    chmod 644 /etc/nginx/ssl/fullchain.pem && \
-    chmod 600 /etc/nginx/ssl/privkey.pem && \
-    chown www-data:www-data /etc/nginx/ssl/*.pem
 
 # Set permissions
 RUN chown -R appuser:appgroup /app && \
