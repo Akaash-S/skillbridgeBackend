@@ -1,52 +1,83 @@
 #!/bin/bash
 
-# Fix Docker Version Issue - Upgrade Docker and Docker Compose
+# Docker Version Fix Script
+# Fixes "client version 1.43 is too old" error by installing latest Docker
 
-echo "🔧 Fixing Docker Version Issue"
-echo "=============================="
+set -e
 
-# Colors
+echo "🔧 Docker Version Fix Script"
+echo "============================"
+echo ""
+
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+print_step() {
+    echo -e "${BLUE}📋 $1${NC}"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${GREEN}✅ $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}❌ $1${NC}"
 }
 
 # Check current Docker version
-print_status "Checking current Docker version..."
-docker --version || print_error "Docker not installed"
-docker-compose --version || print_error "Docker Compose not installed"
+print_step "Checking current Docker installation..."
+if command -v docker &> /dev/null; then
+    DOCKER_VERSION=$(docker --version)
+    echo "Current Docker version: $DOCKER_VERSION"
+    
+    # Test Docker API
+    if docker version &> /dev/null; then
+        print_success "Docker is working correctly"
+        echo "No fix needed. If you're still getting API version errors, try:"
+        echo "  docker compose version"
+        echo "  docker --version"
+        exit 0
+    else
+        print_warning "Docker API version issue detected"
+    fi
+else
+    print_warning "Docker not found"
+fi
 
-# Stop any running containers first
-print_status "Stopping any running containers..."
-docker-compose down 2>/dev/null || true
+# Check if running as root
+if [ "$EUID" -eq 0 ]; then
+    print_warning "Running as root. This script will work but it's not recommended."
+fi
 
-# Remove old Docker versions
-print_status "Removing old Docker versions..."
+print_step "Removing old Docker installations..."
+
+# Stop Docker service
+sudo systemctl stop docker 2>/dev/null || true
+
+# Remove old Docker packages
 sudo apt-get remove -y docker docker-engine docker.io containerd runc docker-compose 2>/dev/null || true
 
+# Remove old repositories and keys
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo rm -f /etc/apt/keyrings/docker.gpg
+sudo rm -f /usr/local/bin/docker-compose
+
+print_success "Old Docker installations removed"
+
+print_step "Installing latest Docker..."
+
 # Update package index
-print_status "Updating package index..."
 sudo apt-get update
 
 # Install prerequisites
-print_status "Installing prerequisites..."
 sudo apt-get install -y \
     ca-certificates \
     curl \
@@ -54,66 +85,80 @@ sudo apt-get install -y \
     lsb-release
 
 # Add Docker's official GPG key
-print_status "Adding Docker GPG key..."
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-# Set up Docker repository
-print_status "Setting up Docker repository..."
+# Set up the repository
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Update package index again
-print_status "Updating package index with Docker repository..."
+# Update package index
 sudo apt-get update
 
-# Install latest Docker Engine
-print_status "Installing latest Docker Engine..."
+# Install Docker Engine
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+print_success "Latest Docker installed"
+
+print_step "Configuring Docker..."
+
 # Add user to docker group
-print_status "Adding user to docker group..."
 sudo usermod -aG docker $USER
 
-# Install Docker Compose (standalone) - latest version
-print_status "Installing latest Docker Compose..."
-DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
-sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Create symlink for docker compose plugin
-sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
-
-# Start and enable Docker service
-print_status "Starting Docker service..."
+# Start and enable Docker
 sudo systemctl start docker
 sudo systemctl enable docker
 
-# Verify installation
-print_status "Verifying Docker installation..."
-echo "Docker version:"
-sudo docker --version
+# Create docker-compose symlink for compatibility
+sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null || true
 
-echo "Docker Compose version:"
-sudo docker-compose --version
+print_success "Docker configured"
 
-# Test Docker
-print_status "Testing Docker..."
-if sudo docker run --rm hello-world > /dev/null 2>&1; then
-    print_success "Docker is working correctly"
+print_step "Testing Docker installation..."
+
+# Test Docker with sudo first
+if sudo docker run hello-world &> /dev/null; then
+    print_success "Docker engine is working"
 else
-    print_error "Docker test failed"
+    print_error "Docker engine test failed"
+    exit 1
 fi
 
-print_success "Docker upgrade completed!"
+# Check Docker Compose
+if docker compose version &> /dev/null; then
+    print_success "Docker Compose V2 is working"
+elif command -v docker-compose &> /dev/null && docker-compose --version &> /dev/null; then
+    print_success "Docker Compose V1 is working"
+else
+    print_warning "Docker Compose may need manual configuration"
+fi
+
 echo ""
-print_warning "IMPORTANT: You need to log out and log back in for group changes to take effect"
-echo "Or run: newgrp docker"
+print_success "Docker installation completed successfully!"
 echo ""
-echo "🔧 Next steps:"
-echo "1. Log out and log back in (or run: newgrp docker)"
-echo "2. Test: docker --version"
-echo "3. Test: docker-compose --version"
-echo "4. Run deployment: ./deploy-gce.sh"
+echo "📋 Installed versions:"
+sudo docker --version
+docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || echo "Docker Compose: Not available"
 echo ""
+echo "⚠️  IMPORTANT: You need to logout and login again for group changes to take effect"
+echo ""
+echo "🔧 After logout/login, test with:"
+echo "   docker --version"
+echo "   docker compose version"
+echo "   docker run hello-world"
+echo ""
+echo "🚀 Then you can continue with your deployment:"
+echo "   docker compose build --no-cache"
+echo "   docker compose up -d"
+echo ""
+
+# Check if we're in an application directory
+if [ -f "docker-compose.yml" ] || [ -f "Dockerfile" ]; then
+    echo "📍 Application files detected in current directory"
+    echo "   After logout/login, you can run:"
+    echo "   docker compose build --no-cache"
+    echo "   docker compose up -d"
+fi
+
+print_warning "Please logout and login again, then test Docker without sudo"

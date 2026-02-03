@@ -55,8 +55,26 @@ echo ""
 # Step 2: Install Docker
 print_step "Installing Docker..."
 if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
+    # Remove old Docker versions
+    sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
+    
+    # Install prerequisites
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Add Docker's official GPG key
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    
+    # Set up the repository
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Update package index and install Docker
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
     sudo usermod -aG docker $USER
     print_success "Docker installed"
 else
@@ -66,8 +84,8 @@ fi
 # Step 3: Install Docker Compose
 print_step "Installing Docker Compose..."
 if ! command -v docker-compose &> /dev/null; then
-    sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
+    # Docker Compose V2 is included with Docker Engine, create symlink for compatibility
+    sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null || true
     print_success "Docker Compose installed"
 else
     print_success "Docker Compose already installed"
@@ -311,9 +329,9 @@ echo ""
 
 # Step 13: Build and start application
 print_step "Building and starting application..."
-docker-compose down --remove-orphans 2>/dev/null || true
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down --remove-orphans 2>/dev/null || true
+docker compose build --no-cache
+docker compose up -d
 print_success "Application started"
 echo ""
 
@@ -364,7 +382,7 @@ echo "===================================="
 echo -e "${NC}"
 echo ""
 echo "📊 Service Status:"
-docker-compose ps
+docker compose ps
 echo ""
 echo "🔗 Your application is available at:"
 echo "   HTTP:  http://$SERVER_IP"
@@ -377,10 +395,10 @@ echo "   3. Test your application endpoints"
 echo "   4. Setup monitoring and backups"
 echo ""
 echo "📋 Useful commands:"
-echo "   View logs:    docker-compose logs -f"
-echo "   Restart:      docker-compose restart"
-echo "   Stop:         docker-compose down"
-echo "   Status:       docker-compose ps"
+echo "   View logs:    docker compose logs -f"
+echo "   Restart:      docker compose restart"
+echo "   Stop:         docker compose down"
+echo "   Status:       docker compose ps"
 echo "   Health:       curl -f http://localhost/health"
 echo "   Verify:       ./verify-deployment.sh"
 echo ""
