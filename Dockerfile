@@ -1,4 +1,4 @@
-# Multi-stage production Dockerfile for GCP Compute Engine
+# Production Dockerfile for SkillBridge Backend
 FROM python:3.11-slim
 
 # Set environment variables
@@ -9,164 +9,140 @@ ENV FLASK_ENV=production
 ENV PORT=8000
 
 # Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc \
-        g++ \
-        curl \
-        git \
-        ca-certificates \
-        nginx \
-        supervisor \
-        redis-server \
-        openssl \
-    && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    git \
+    ca-certificates \
+    nginx \
+    supervisor \
+    redis-server \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create application user
-RUN addgroup --system --gid 1001 appgroup \
-    && adduser --system --uid 1001 --gid 1001 --no-create-home appuser
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # Set work directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Copy requirements and install Python dependencies
 COPY requirements.txt requirements-minimal.txt ./
-
-# Install Python dependencies
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir gunicorn[gevent]==21.2.0
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn[gevent]==21.2.0
 
 # Copy application code
 COPY . .
 
-# Create default configuration files
-RUN mkdir -p /etc/nginx/conf.d /etc/supervisor/conf.d /app/logs \
-    && if [ -f nginx/nginx.conf ]; then \
-        cp nginx/nginx.conf /etc/nginx/nginx.conf; \
-    else \
-        cat > /etc/nginx/nginx.conf << 'NGINX_EOF'
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
+# Create necessary directories
+RUN mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/ssl /app/logs /var/log/supervisor
 
-events {
-    worker_connections 1024;
-}
+# Create nginx main configuration
+RUN echo "user www-data;" > /etc/nginx/nginx.conf && \
+    echo "worker_processes auto;" >> /etc/nginx/nginx.conf && \
+    echo "pid /run/nginx.pid;" >> /etc/nginx/nginx.conf && \
+    echo "" >> /etc/nginx/nginx.conf && \
+    echo "events {" >> /etc/nginx/nginx.conf && \
+    echo "    worker_connections 1024;" >> /etc/nginx/nginx.conf && \
+    echo "}" >> /etc/nginx/nginx.conf && \
+    echo "" >> /etc/nginx/nginx.conf && \
+    echo "http {" >> /etc/nginx/nginx.conf && \
+    echo "    include /etc/nginx/mime.types;" >> /etc/nginx/nginx.conf && \
+    echo "    default_type application/octet-stream;" >> /etc/nginx/nginx.conf && \
+    echo "    sendfile on;" >> /etc/nginx/nginx.conf && \
+    echo "    tcp_nopush on;" >> /etc/nginx/nginx.conf && \
+    echo "    tcp_nodelay on;" >> /etc/nginx/nginx.conf && \
+    echo "    keepalive_timeout 65;" >> /etc/nginx/nginx.conf && \
+    echo "    server_tokens off;" >> /etc/nginx/nginx.conf && \
+    echo "    access_log /var/log/nginx/access.log;" >> /etc/nginx/nginx.conf && \
+    echo "    error_log /var/log/nginx/error.log;" >> /etc/nginx/nginx.conf && \
+    echo "    gzip on;" >> /etc/nginx/nginx.conf && \
+    echo "    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;" >> /etc/nginx/nginx.conf && \
+    echo "    include /etc/nginx/sites-enabled/*;" >> /etc/nginx/nginx.conf && \
+    echo "}" >> /etc/nginx/nginx.conf
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    server_tokens off;
-    
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-    
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-    
-    upstream backend {
-        server 127.0.0.1:8000;
-    }
-    
-    server {
-        listen 80 default_server;
-        listen 443 ssl default_server;
-        
-        ssl_certificate /etc/nginx/ssl/fullchain.pem;
-        ssl_certificate_key /etc/nginx/ssl/privkey.pem;
-        
-        location /health {
-            proxy_pass http://backend/health;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        location / {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-}
-NGINX_EOF
-    fi
+# Create nginx site configuration
+RUN echo "server {" > /etc/nginx/sites-available/skillbridge && \
+    echo "    listen 80 default_server;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    listen 443 ssl default_server;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    ssl_certificate /etc/nginx/ssl/fullchain.pem;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    ssl_certificate_key /etc/nginx/ssl/privkey.pem;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    location /health {" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_pass http://127.0.0.1:8000/health;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    }" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    location / {" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_pass http://127.0.0.1:8000;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/skillbridge && \
+    echo "    }" >> /etc/nginx/sites-available/skillbridge && \
+    echo "}" >> /etc/nginx/sites-available/skillbridge
+
+# Enable the site
+RUN ln -sf /etc/nginx/sites-available/skillbridge /etc/nginx/sites-enabled/
 
 # Create supervisor configuration
-RUN if [ -f supervisord.conf ]; then \
-        cp supervisord.conf /etc/supervisor/conf.d/supervisord.conf; \
-    else \
-        cat > /etc/supervisor/conf.d/supervisord.conf << 'SUPERVISOR_EOF'
-[supervisord]
-nodaemon=true
-user=root
-logfile=/var/log/supervisor/supervisord.log
-pidfile=/var/run/supervisord.pid
-
-[program:nginx]
-command=/usr/sbin/nginx -g "daemon off;"
-autostart=true
-autorestart=true
-user=root
-stdout_logfile=/var/log/supervisor/nginx.log
-stderr_logfile=/var/log/supervisor/nginx.log
-
-[program:gunicorn]
-command=/usr/local/bin/gunicorn --bind 127.0.0.1:8000 --workers 4 --worker-class gevent --timeout 30 --keep-alive 5 --max-requests 1000 --access-logfile /app/logs/gunicorn-access.log --error-logfile /app/logs/gunicorn-error.log --log-level info app.main:app
-directory=/app
-autostart=true
-autorestart=true
-user=appuser
-stdout_logfile=/var/log/supervisor/gunicorn.log
-stderr_logfile=/var/log/supervisor/gunicorn.log
-environment=PATH="/usr/local/bin:%(ENV_PATH)s"
-
-[program:redis]
-command=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --daemonize no
-autostart=true
-autorestart=true
-user=redis
-stdout_logfile=/var/log/supervisor/redis.log
-stderr_logfile=/var/log/supervisor/redis.log
-
-[unix_http_server]
-file=/var/run/supervisor.sock
-chmod=0700
-
-[supervisorctl]
-serverurl=unix:///var/run/supervisor.sock
-
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-SUPERVISOR_EOF
-    fi
-
-# Set permissions
-RUN chown -R appuser:appgroup /app \
-    && chown -R www-data:www-data /var/log/nginx \
-    && chown -R redis:redis /var/lib/redis \
-    && chmod -R 755 /app \
-    && chmod -R 777 /app/logs
+RUN echo "[supervisord]" > /etc/supervisor/conf.d/supervisord.conf && \
+    echo "nodaemon=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "user=root" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "logfile=/var/log/supervisor/supervisord.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "pidfile=/var/run/supervisord.pid" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[program:nginx]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "command=/usr/sbin/nginx -g \"daemon off;\"" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "user=root" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stdout_logfile=/var/log/supervisor/nginx.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stderr_logfile=/var/log/supervisor/nginx.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[program:gunicorn]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "command=/usr/local/bin/gunicorn --bind 127.0.0.1:8000 --workers 4 --worker-class gevent --timeout 30 --keep-alive 5 --max-requests 1000 --access-logfile /app/logs/gunicorn-access.log --error-logfile /app/logs/gunicorn-error.log --log-level info app.main:app" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "directory=/app" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "user=appuser" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stdout_logfile=/var/log/supervisor/gunicorn.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stderr_logfile=/var/log/supervisor/gunicorn.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "environment=PATH=\"/usr/local/bin:%(ENV_PATH)s\"" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[program:redis]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "command=/usr/bin/redis-server --bind 127.0.0.1 --port 6379 --daemonize no" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autostart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "autorestart=true" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "user=redis" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stdout_logfile=/var/log/supervisor/redis.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "stderr_logfile=/var/log/supervisor/redis.log" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[unix_http_server]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "file=/var/run/supervisor.sock" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "chmod=0700" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[supervisorctl]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "serverurl=unix:///var/run/supervisor.sock" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "[rpcinterface:supervisor]" >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo "supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface" >> /etc/supervisor/conf.d/supervisord.conf
 
 # Generate self-signed SSL certificates
-RUN mkdir -p /etc/nginx/ssl \
-    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/nginx/ssl/privkey.pem \
-        -out /etc/nginx/ssl/fullchain.pem \
-        -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" \
-    && cp /etc/nginx/ssl/fullchain.pem /etc/nginx/ssl/chain.pem \
-    && chmod 600 /etc/nginx/ssl/*.pem
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/privkey.pem \
+    -out /etc/nginx/ssl/fullchain.pem \
+    -subj "/C=US/ST=State/L=City/O=SkillBridge/CN=localhost" && \
+    chmod 600 /etc/nginx/ssl/*.pem
+
+# Set permissions
+RUN chown -R appuser:appgroup /app && \
+    chown -R www-data:www-data /var/log/nginx && \
+    chmod -R 755 /app && \
+    chmod -R 777 /app/logs
 
 # Expose ports
 EXPOSE 80 443
@@ -175,5 +151,5 @@ EXPOSE 80 443
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost/health || exit 1
 
-# Use supervisor to manage multiple processes
+# Start supervisor
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
