@@ -33,11 +33,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
-# Create logs directory
-RUN mkdir -p /app/logs
-
-# Set permissions
-RUN chown -R appuser:appgroup /app && \
+# Create logs directory and set proper permissions
+RUN mkdir -p /app/logs && \
+    chown -R appuser:appgroup /app && \
     chmod -R 755 /app && \
     chmod -R 777 /app/logs
 
@@ -51,5 +49,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Start Gunicorn directly
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "sync", "--timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--access-logfile", "/app/logs/gunicorn-access.log", "--error-logfile", "/app/logs/gunicorn-error.log", "--log-level", "info", "app.main:app"]
+# Start Gunicorn with stdout/stderr logging (no file logging to avoid permission issues)
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "sync", "--timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--log-level", "info", "app.main:app"]
