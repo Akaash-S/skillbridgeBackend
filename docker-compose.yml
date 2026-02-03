@@ -1,4 +1,4 @@
-# Docker Compose file for SkillBridge Backend
+# Docker Compose file for SkillBridge Backend - Ultra Simple
 
 services:
   skillbridge:
@@ -48,10 +48,6 @@ services:
       
       # CORS Configuration
       - CORS_ORIGINS=${CORS_ORIGINS}
-      
-    volumes:
-      # Persistent logs
-      - ./logs:/app/logs
       
     restart: unless-stopped
     
