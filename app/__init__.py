@@ -1,5 +1,5 @@
 from flask import Flask, request, make_response
-from flask_cors import CORS
+# from flask_cors import CORS  # DISABLED - Nginx handles CORS
 from app.config import Config
 from app.db.firestore import init_firestore, is_firestore_available
 from app.services.firebase_service import init_firebase, is_firebase_available, get_firebase_status
@@ -12,19 +12,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # CORS configuration from environment variable
-    cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:8080').split(',')
-    cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
-    
-    CORS(app, 
-         origins=cors_origins,
-         methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-         allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-         supports_credentials=True,
-         max_age=86400
-    )
-    
-    logger.info(f"🌐 CORS configured for origins: {', '.join(cors_origins)}")
+    # CORS is now handled by Nginx - no need for flask-cors
+    # This prevents duplicate CORS headers
+    logger.info("🌐 CORS handling delegated to Nginx reverse proxy")
     
     # Initialize Firebase with detailed status reporting
     logger.info("🚀 Starting Firebase initialization...")

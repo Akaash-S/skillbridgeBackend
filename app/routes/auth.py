@@ -1,14 +1,20 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from app.services.firebase_service import FirebaseAuthService, auth_required
 from app.db.firestore import FirestoreService
 from app.services.mfa_service import mfa_service
 from app.utils.validators import validate_required_fields
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint('auth', __name__)
 db_service = FirestoreService()
+
+# Cookie configuration
+COOKIE_NAME = 'sb_session'
+COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
+IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -84,12 +90,27 @@ def login():
             db_service.log_user_activity(uid, 'LOGIN', activity_message)
             
             logger.info(f"Login successful for user {uid} via {session_type}")
-            return jsonify({
+            
+            # Create response with httpOnly cookie
+            response = make_response(jsonify({
                 'message': 'Login successful',
                 'user': existing_user,
                 'isNewUser': False,
                 'mfa_required': False
-            }), 200
+            }), 200)
+            
+            # Set httpOnly cookie with the Firebase token
+            response.set_cookie(
+                COOKIE_NAME,
+                value=data['idToken'],
+                max_age=COOKIE_MAX_AGE,
+                secure=IS_PRODUCTION,  # Only send over HTTPS in production
+                httponly=True,  # Prevent JavaScript access
+                samesite='Lax',  # CSRF protection
+                path='/'
+            )
+            
+            return response
         else:
             # Create new user profile
             new_user = {
@@ -120,12 +141,27 @@ def login():
             db_service.log_user_activity(uid, 'REGISTRATION', 'New user registered')
             
             logger.info(f"New user created: {uid}")
-            return jsonify({
+            
+            # Create response with httpOnly cookie
+            response = make_response(jsonify({
                 'message': 'User created successfully',
                 'user': new_user,
                 'isNewUser': True,
                 'mfa_required': False
-            }), 201
+            }), 201)
+            
+            # Set httpOnly cookie with the Firebase token
+            response.set_cookie(
+                COOKIE_NAME,
+                value=data['idToken'],
+                max_age=COOKIE_MAX_AGE,
+                secure=IS_PRODUCTION,
+                httponly=True,
+                samesite='Lax',
+                path='/'
+            )
+            
+            return response
             
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
@@ -141,21 +177,23 @@ def complete_mfa_login():
     Expected payload: { 
         "mfa_token": "token", 
         "code": "123456", 
-        "is_recovery_code": false 
+        "is_recovery_code": false,
+        "idToken": "firebase_id_token"
     }
     """
     try:
         data = request.get_json()
         
-        if not validate_required_fields(data, ['mfa_token', 'code']):
+        if not validate_required_fields(data, ['mfa_token', 'code', 'idToken']):
             return jsonify({
-                'error': 'Missing required fields: mfa_token and code',
+                'error': 'Missing required fields: mfa_token, code, and idToken',
                 'code': 'VALIDATION_ERROR'
             }), 400
         
         mfa_token = data['mfa_token']
         verification_code = data['code']
         is_recovery_code = data.get('is_recovery_code', False)
+        id_token = data['idToken']
         
         # Verify MFA session
         uid = mfa_service.verify_mfa_session(mfa_token)
@@ -219,10 +257,24 @@ def complete_mfa_login():
         
         logger.info(f"MFA login successful for user {uid} via {mfa_method}")
         
-        return jsonify({
+        # Create response with httpOnly cookie
+        response = make_response(jsonify({
             'message': 'MFA verification successful',
             'user': user_profile
-        }), 200
+        }), 200)
+        
+        # Set httpOnly cookie with the Firebase token
+        response.set_cookie(
+            COOKIE_NAME,
+            value=id_token,
+            max_age=COOKIE_MAX_AGE,
+            secure=IS_PRODUCTION,
+            httponly=True,
+            samesite='Lax',
+            path='/'
+        )
+        
+        return response
         
     except Exception as e:
         logger.error(f"MFA login error: {str(e)}")
@@ -285,4 +337,33 @@ def verify_token():
         return jsonify({
             'error': 'Internal server error during token verification',
             'code': 'TOKEN_VERIFY_ERROR'
+        }), 500
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    """Logout user by clearing the session cookie"""
+    try:
+        response = make_response(jsonify({
+            'message': 'Logout successful'
+        }), 200)
+        
+        # Clear the session cookie
+        response.set_cookie(
+            COOKIE_NAME,
+            value='',
+            max_age=0,
+            secure=IS_PRODUCTION,
+            httponly=True,
+            samesite='Lax',
+            path='/'
+        )
+        
+        logger.info("User logged out successfully")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error during logout',
+            'code': 'LOGOUT_ERROR'
         }), 500

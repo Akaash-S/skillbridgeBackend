@@ -158,7 +158,13 @@ class FirebaseAuthService:
     
     @staticmethod
     def extract_token_from_request() -> str:
-        """Extract Firebase ID token from request headers"""
+        """Extract Firebase ID token from request (cookie or Authorization header)"""
+        # First, try to get token from httpOnly cookie
+        token = request.cookies.get('sb_session')
+        if token:
+            return token
+        
+        # Fallback to Authorization header for backward compatibility
         auth_header = request.headers.get('Authorization')
         if not auth_header:
             return None
