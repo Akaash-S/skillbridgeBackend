@@ -85,8 +85,10 @@ server {
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;  # New http2 directive (replaces deprecated "listen ... http2")
+    
     server_name skillbridge-server.asolvitra.tech;
     
     # SSL Configuration

@@ -1,14 +1,19 @@
 #!/bin/bash
 
-# Update Nginx configuration to support httpOnly cookies
-# This script updates the CORS headers to allow credentials
+# Fix Nginx http2 deprecation warning
+# The "listen ... http2" directive is deprecated in newer Nginx versions
+# Use the "http2" directive instead
 
-echo "🔧 Updating Nginx configuration for httpOnly cookie support..."
+set -e
+
+echo "🔧 Fixing Nginx http2 deprecation warning..."
+echo ""
 
 # Backup current configuration
 sudo cp /etc/nginx/sites-available/skillbridge /etc/nginx/sites-available/skillbridge.backup.$(date +%Y%m%d_%H%M%S)
+echo "✅ Backup created"
 
-# Create updated Nginx configuration
+# Create updated Nginx configuration with new http2 syntax
 sudo tee /etc/nginx/sites-available/skillbridge > /dev/null <<'EOF'
 # Map to determine allowed origin dynamically
 map $http_origin $cors_origin {
@@ -104,9 +109,10 @@ server {
 }
 EOF
 
-echo "✅ Nginx configuration updated"
+echo "✅ Nginx configuration updated with new http2 syntax"
 
 # Test configuration
+echo ""
 echo "🧪 Testing Nginx configuration..."
 sudo nginx -t
 
@@ -116,12 +122,11 @@ if [ $? -eq 0 ]; then
     sudo systemctl reload nginx
     echo "✅ Nginx reloaded successfully"
     echo ""
-    echo "🎉 Nginx is now configured to support httpOnly cookies!"
-    echo "   - Credentials are allowed in CORS"
-    echo "   - Cookies will be sent with cross-origin requests"
+    echo "🎉 http2 deprecation warning fixed!"
 else
     echo "❌ Configuration test failed"
     echo "🔙 Restoring backup..."
-    sudo cp /etc/nginx/sites-available/skillbridge.backup.$(date +%Y%m%d)* /etc/nginx/sites-available/skillbridge
+    LATEST_BACKUP=$(ls -t /etc/nginx/sites-available/skillbridge.backup.* | head -1)
+    sudo cp "$LATEST_BACKUP" /etc/nginx/sites-available/skillbridge
     exit 1
 fi
