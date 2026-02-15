@@ -104,9 +104,9 @@ def login():
                 COOKIE_NAME,
                 value=data['idToken'],
                 max_age=COOKIE_MAX_AGE,
-                secure=IS_PRODUCTION,  # Only send over HTTPS in production
+                secure=True,  # Required for SameSite=None (cross-origin cookies)
                 httponly=True,  # Prevent JavaScript access
-                samesite='Lax',  # CSRF protection
+                samesite='None',  # Allow cross-origin cookie transmission
                 path='/'
             )
             
@@ -155,9 +155,9 @@ def login():
                 COOKIE_NAME,
                 value=data['idToken'],
                 max_age=COOKIE_MAX_AGE,
-                secure=IS_PRODUCTION,
+                secure=True,  # Required for SameSite=None (cross-origin cookies)
                 httponly=True,
-                samesite='Lax',
+                samesite='None',  # Allow cross-origin cookie transmission
                 path='/'
             )
             
@@ -268,9 +268,9 @@ def complete_mfa_login():
             COOKIE_NAME,
             value=id_token,
             max_age=COOKIE_MAX_AGE,
-            secure=IS_PRODUCTION,
+            secure=True,  # Required for SameSite=None (cross-origin cookies)
             httponly=True,
-            samesite='Lax',
+            samesite='None',  # Allow cross-origin cookie transmission
             path='/'
         )
         
@@ -352,9 +352,9 @@ def logout():
             COOKIE_NAME,
             value='',
             max_age=0,
-            secure=IS_PRODUCTION,
+            secure=True,  # Required for SameSite=None (cross-origin cookies)
             httponly=True,
-            samesite='Lax',
+            samesite='None',  # Allow cross-origin cookie transmission
             path='/'
         )
         
