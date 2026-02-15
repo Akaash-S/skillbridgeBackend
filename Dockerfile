@@ -28,7 +28,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy only the application code (excluding nginx, scripts, etc.)
 COPY app/ ./app/
-COPY .env ./
 
 # Expose port
 EXPOSE 8000
