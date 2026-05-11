@@ -71,6 +71,7 @@ def create_app():
     from app.routes.courses import courses_bp
     from app.routes.mfa import mfa_bp
     from app.routes.email import email_bp
+    from app.routes.certificate import certificate_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(users_bp, url_prefix='/users')
@@ -85,6 +86,7 @@ def create_app():
     app.register_blueprint(courses_bp, url_prefix='/courses')
     app.register_blueprint(mfa_bp, url_prefix='/mfa')
     app.register_blueprint(email_bp, url_prefix='/email')
+    app.register_blueprint(certificate_bp, url_prefix='/certificate')
     
     @app.route('/health')
     def health_check():
