@@ -264,29 +264,42 @@ class UserStateManager:
             target_role = user_state.get('targetRole')
             is_valid_role = target_role and any(role['id'] == target_role.get('id') for role in formatted_job_roles)
             
-            # CRITICAL FIX: Validate roadmap matches current role
-            validated_user_state = user_state.copy()
-            if target_role and is_valid_role:
-                roadmap_progress = user_state.get('roadmapProgress')
-                if roadmap_progress:
-                    stored_roadmap_role = roadmap_progress.get('targetRole')
-                    current_role_id = target_role.get('id')
-                    
-                    # Only keep roadmap if it matches current role
-                    if stored_roadmap_role != current_role_id:
-                        logger.warning(f"🔄 Roadmap role mismatch for user {uid}: stored={stored_roadmap_role}, current={current_role_id}")
-                        logger.info(f"🧹 Clearing stale roadmap data for user {uid}")
-                        # Clear stale roadmap data
-                        validated_user_state['roadmapProgress'] = None
-                    else:
-                        logger.info(f"✅ Roadmap matches current role for user {uid}: {current_role_id}")
-            elif not is_valid_role and target_role:
-                logger.warning(f"⚠️ Invalid target role for user {uid}: {target_role.get('id', 'Unknown')}")
-                # Clear invalid role data
-                validated_user_state['targetRole'] = None
-                validated_user_state['roadmapProgress'] = None
-                validated_user_state['analysis'] = None
+            # CRITICAL FIX: Fetch actual roadmap completion data from user_roadmaps collection
+            # This ensures progress is preserved on page refresh
+            active_roadmap = self.db_service.get_user_roadmap(uid)
+            roadmap_items = []
             
+            if active_roadmap and is_valid_role:
+                # Map milestones to frontend roadmap items
+                milestones = active_roadmap.get('milestones', [])
+                for milestone in milestones:
+                    for skill in milestone.get('skills', []):
+                        roadmap_items.append({
+                            'id': f"roadmap-{skill['skillId']}",
+                            'skillId': skill['skillId'],
+                            'skillName': skill.get('skillName', skill['skillId']),
+                            'resources': skill.get('resources', []),
+                            'difficulty': skill.get('targetLevel', 'intermediate'),
+                            'estimatedTime': f"{skill.get('estimatedHours', 20)} hours",
+                            'completed': skill.get('completed', False)
+                        })
+                
+                # Update roadmap progress object
+                roadmap_progress = {
+                    'targetRole': active_roadmap.get('roleId'),
+                    'totalItems': len(roadmap_items),
+                    'completedItems': sum(1 for item in roadmap_items if item.get('completed')),
+                    'progress': active_roadmap.get('progress', {}).get('skillProgress', 0),
+                    'roadmapItems': roadmap_items,
+                    'lastUpdated': active_roadmap.get('lastUpdated', datetime.utcnow())
+                }
+                user_state['roadmapProgress'] = roadmap_progress
+                logger.info(f"✅ Loaded live roadmap progress for user {uid}: {len(roadmap_items)} items")
+            else:
+                # If no active roadmap, clear any stale roadmap progress from state
+                user_state['roadmapProgress'] = None
+                logger.info(f"ℹ️ No active roadmap found for user {uid}")
+
             # Get target role analysis if available and role is valid
             skill_gap_analysis = None
             if is_valid_role and formatted_user_skills:
@@ -303,13 +316,13 @@ class UserStateManager:
                 }
                 
                 # Merge with existing validated state
-                validated_user_state.update(updated_state)
+                user_state.update(updated_state)
                 
-                # Save updated state back to database
-                self.save_user_state(uid, validated_user_state)
+                # Save updated state back to database (caching the update)
+                self.save_user_state(uid, user_state)
             
             return {
-                'userState': validated_user_state,
+                'userState': user_state,
                 'userSkills': formatted_user_skills,
                 'masterSkills': formatted_master_skills,
                 'jobRoles': formatted_job_roles,
