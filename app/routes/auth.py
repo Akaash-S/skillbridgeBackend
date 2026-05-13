@@ -4,6 +4,7 @@ from app.db.firestore import FirestoreService
 from app.services.mfa_service import mfa_service
 from app.utils.validators import validate_required_fields
 from datetime import datetime, timedelta
+from app import limiter
 import logging
 import os
 
@@ -17,6 +18,7 @@ COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
 IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
     """
     Authenticate user with Firebase ID token and create/update user profile
@@ -171,6 +173,7 @@ def login():
         }), 500
 
 @auth_bp.route('/login/mfa', methods=['POST'])
+@limiter.limit("5 per minute")
 def complete_mfa_login():
     """
     Complete login after MFA verification

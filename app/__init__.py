@@ -3,14 +3,28 @@ from flask_cors import CORS  # Re-enabled for direct backend access
 from app.config import Config
 from app.db.firestore import init_firestore, is_firestore_available
 from app.services.firebase_service import init_firebase, is_firebase_available, get_firebase_status
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Initialize Limiter - Global Instance
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100 per minute"],
+    storage_uri="memory://",
+    strategy="fixed-window",
+    headers_enabled=True # Send rate limit headers to frontend
+)
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    
+    # Initialize Limiter with app
+    limiter.init_app(app)
     
     # Enable CORS for production deployment (direct backend access)
     # Read allowed origins from environment variable

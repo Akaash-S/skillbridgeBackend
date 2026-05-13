@@ -6,6 +6,7 @@ from app.services.user_state_manager import UserStateManager
 from app.db.firestore import FirestoreService
 from app.utils.validators import validate_required_fields
 from datetime import datetime
+from app import limiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ db_service = FirestoreService()
 
 @roadmap_bp.route('/generate', methods=['POST'])
 @auth_required
+@limiter.limit("10 per hour")
 def generate_roadmap():
     """
     Generate roadmap using pre-built templates (fast)

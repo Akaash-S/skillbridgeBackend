@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from app.middleware.auth_required import auth_required
 from app.services.assessment_service import AssessmentService
+from app import limiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ def submit_assessment():
 
 @assessment_bp.route('/seed-quiz', methods=['POST'])
 @auth_required
+@limiter.limit("1 per minute")
 def seed_from_quizapi():
     """Endpoint to seed questions from QuizAPI"""
     data = request.get_json() or {}
