@@ -28,17 +28,17 @@ def main():
         debug = os.environ.get('FLASK_ENV') == 'development'
         host = '0.0.0.0'
         
-        print(f"🚀 Starting SkillBridge Suite Backend...")
-        print(f"📍 Server: http://{host}:{port}")
-        print(f"🔧 Environment: {'Development' if debug else 'Production'}")
-        print(f"📊 Health Check: http://{host}:{port}/health")
+        print(f"Starting SkillBridge Suite Backend...")
+        print(f"Server: http://{host}:{port}")
+        print(f"Environment: {'Development' if debug else 'Production'}")
+        print(f"Health Check: http://{host}:{port}/health")
         print("=" * 50)
         
         # Run the Flask app
         app.run(host=host, port=port, debug=debug)
         
     except Exception as e:
-        print(f"❌ Failed to start server: {str(e)}")
+        print(f"Failed to start server: {str(e)}")
         sys.exit(1)
 
 if __name__ == '__main__':

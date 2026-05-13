@@ -40,10 +40,14 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       
       # Email Settings
-      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-SkillBridge Suite}
       - EMAIL_SUPPORT=${EMAIL_SUPPORT}
       - EMAIL_RATE_LIMIT=${EMAIL_RATE_LIMIT}
       - EMAIL_BATCH_SIZE=${EMAIL_BATCH_SIZE}
+      
+      # QuizAPI Configuration
+      - QUIZ_API_KEY=${QUIZ_API_KEY}
+      - QUIZ_API_BASE_URL=${QUIZ_API_BASE_URL}
       
       # CORS Configuration
       - CORS_ORIGINS=${CORS_ORIGINS}

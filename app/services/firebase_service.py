@@ -191,9 +191,9 @@ def auth_required(f):
     """Decorator to require Firebase authentication with graceful fallback"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # If Firebase is not available, allow development mode
-        if not FIREBASE_AVAILABLE:
-            logger.warning("Firebase not available - using development mode (no auth required)")
+        # If Firebase is not available or BYPASS_AUTH is enabled, allow development mode
+        if not FIREBASE_AVAILABLE or os.environ.get('BYPASS_AUTH', '').lower() in ('true', '1', 'yes'):
+            logger.warning("Bypassing Firebase authentication (Development Mode)")
             # Create a mock user for development
             request.current_user = {
                 'uid': 'dev-user-123',

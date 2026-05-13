@@ -57,6 +57,21 @@ class CertificateService:
             if total_skills == 0 or completed_skills < total_skills:
                 logger.warning(f"Roadmap for user {uid} is not 100% complete: {completed_skills}/{total_skills}")
                 return None
+
+            # 3. Check for passed proctored assessment
+            assessment_passed = self.db_service.query_collection(
+                'assessment_sessions',
+                [('uid', '==', uid), ('roleId', '==', role_id), ('status', '==', 'passed')]
+            )
+            
+            if not assessment_passed:
+                logger.warning(f"No passed assessment found for user {uid} and role {role_id}")
+                return None
+            
+            # Ensure violations were < 3 (already handled by status='passed' but extra check)
+            if assessment_passed[0].get('violations', 0) >= 3:
+                logger.warning(f"Assessment found but contains too many violations for user {uid}")
+                return None
             
             # 3. Check if certificate already exists for this roadmap
             existing_certs = self.db_service.query_collection(
