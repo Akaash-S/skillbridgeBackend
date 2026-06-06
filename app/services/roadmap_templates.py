@@ -492,7 +492,124 @@ class FastRoadmapGenerator:
         except Exception as e:
             logger.error(f"Error loading template from Firestore: {str(e)}")
             return None
-    
+
+    def generate_and_save_roadmap(self, uid: str, target_role: str, experience_level: str = 'beginner') -> Optional[Dict]:
+        """Generate a customized template-based roadmap and save it as active, deactivating old ones"""
+        try:
+            from app.services.skills_engine import SkillsEngine
+            from app.services.user_state_manager import UserStateManager
+            from app.services.learning_service import LearningService
+            
+            skills_engine = SkillsEngine()
+            state_manager = UserStateManager()
+            learning_svc = LearningService()
+            
+            role_title = target_role.replace('-', ' ').title()
+            
+            # Load template
+            roadmap_template = self.load_template_from_firestore(target_role)
+            if not roadmap_template:
+                roadmap_template = self.get_roadmap_template(target_role)
+                
+            if not roadmap_template:
+                logger.error(f"No roadmap template found for role: {target_role}")
+                return None
+                
+            # Get user's current skills
+            user_skills = skills_engine.get_user_skills(uid)
+            
+            # Customize template
+            customized_roadmap = self.customize_roadmap(
+                roadmap_template,
+                user_skills,
+                experience_level
+            )
+            
+            # Prepare roadmap data
+            roadmap_data = {
+                'uid': uid,
+                'roleId': target_role,
+                'roleTitle': role_title,
+                'experienceLevel': experience_level,
+                'milestones': customized_roadmap['milestones'],
+                'generatedAt': datetime.utcnow(),
+                'roadmapVersion': 'template-based',
+                'isActive': True,
+                'totalSkills': sum(len(m.get('skills', [])) for m in customized_roadmap['milestones']),
+                'estimatedWeeks': sum(m.get('estimatedWeeks', 0) for m in customized_roadmap['milestones'])
+            }
+            
+            # Deactivate existing roadmaps
+            existing_roadmaps = self.db_service.query_collection(
+                'user_roadmaps',
+                [('uid', '==', uid), ('isActive', '==', True)]
+            )
+            for existing in existing_roadmaps:
+                existing_id = existing.get('id')
+                if existing_id:
+                    self.db_service.update_document('user_roadmaps', existing_id, {'isActive': False})
+                    
+            # Save new roadmap
+            roadmap_id = f"{uid}_{target_role}_{int(datetime.utcnow().timestamp())}"
+            roadmap_data['id'] = roadmap_id
+            success = self.db_service.create_document('user_roadmaps', roadmap_id, roadmap_data)
+            
+            if not success:
+                logger.error(f"Failed to save customized roadmap to database for {uid}")
+                return None
+                
+            # Convert to frontend RoadmapItem format to save to user state
+            roadmap_items = []
+            for milestone in customized_roadmap['milestones']:
+                for skill in milestone.get('skills', []):
+                    resources = learning_svc.get_learning_resources(
+                        skill['skillId'],
+                        role_title=role_title,
+                        role_id=target_role
+                    )
+                    formatted_resources = []
+                    for resource in resources:
+                        formatted_resources.append({
+                            'id': resource.get('id', ''),
+                            'title': resource.get('title', ''),
+                            'url': resource.get('url', ''),
+                            'type': resource.get('type', 'course'),
+                            'duration': resource.get('duration', ''),
+                            'provider': resource.get('provider', '')
+                        })
+                    
+                    roadmap_item = {
+                        'id': f"roadmap-{skill['skillId']}",
+                        'skillId': skill['skillId'],
+                        'skillName': skill.get('skillName', skill['skillId']),
+                        'resources': formatted_resources,
+                        'difficulty': skill.get('targetLevel', 'intermediate'),
+                        'estimatedTime': f"{skill.get('estimatedHours', 20)} hours",
+                        'completed': False
+                    }
+                    roadmap_items.append(roadmap_item)
+                    
+            # Log activity
+            self.db_service.log_user_activity(uid, 'ROADMAP_GENERATED', f'Generated roadmap for {target_role}')
+            
+            # Update user state
+            roadmap_state_data = {
+                'targetRole': target_role,
+                'experienceLevel': experience_level,
+                'totalItems': len(roadmap_items),
+                'completedItems': 0,
+                'progress': 0,
+                'roadmapItems': roadmap_items,
+                'generatedAt': datetime.utcnow(),
+                'lastUpdated': datetime.utcnow()
+            }
+            state_manager.update_roadmap_progress(uid, roadmap_state_data)
+            
+            return roadmap_data
+        except Exception as e:
+            logger.error(f"Error in generate_and_save_roadmap: {str(e)}")
+            return None
+
     def initialize_templates(self) -> bool:
         """Initialize all templates in Firestore"""
         try:

@@ -99,6 +99,17 @@ class UserStateManager:
             
             if success:
                 logger.info(f"✅ Target role updated successfully in database for user {uid}: {role_data.get('title', 'Unknown')}")
+                
+                # Automatically generate/initialize roadmap for the new role
+                role_id = role_data.get('id')
+                if role_id:
+                    try:
+                        from app.services.roadmap_templates import FastRoadmapGenerator
+                        generator = FastRoadmapGenerator()
+                        generator.generate_and_save_roadmap(uid, role_id)
+                        logger.info(f"✅ Auto-generated roadmap for new role {role_id} for user {uid}")
+                    except Exception as roadmap_err:
+                        logger.error(f"❌ Failed to auto-generate roadmap on role update: {str(roadmap_err)}")
             else:
                 logger.error(f"❌ Database update failed for user {uid}")
                 

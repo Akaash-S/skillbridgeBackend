@@ -16,9 +16,23 @@ class ModuleService:
     def get_or_initialize_modules(self, uid: str) -> List[Dict[str, Any]]:
         """Retrieve modules for the user's active roadmap, initializing them if missing"""
         try:
+            # Check if active roadmap matches user's current target role in user_state
+            user_state = self.db_service.get_document('user_state', uid)
+            target_role_id = None
+            if user_state and user_state.get('targetRole'):
+                target_role_id = user_state.get('targetRole').get('id')
+                
             active_roadmap = self.db_service.get_user_roadmap(uid)
+            
+            # If active roadmap doesn't match current target role, or is missing
+            if isinstance(target_role_id, str) and (not active_roadmap or active_roadmap.get('roleId') != target_role_id):
+                logger.info(f"Active roadmap is missing or stale for user {uid}. Re-generating for target role {target_role_id}")
+                from app.services.roadmap_templates import FastRoadmapGenerator
+                generator = FastRoadmapGenerator()
+                active_roadmap = generator.generate_and_save_roadmap(uid, target_role_id)
+                
             if not active_roadmap:
-                logger.warning(f"No active roadmap found for user {uid}")
+                logger.warning(f"No active roadmap found or generated for user {uid}")
                 return []
                 
             milestones = active_roadmap.get('milestones', [])
