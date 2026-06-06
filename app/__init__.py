@@ -26,15 +26,20 @@ def create_app():
     # Initialize Limiter with app
     limiter.init_app(app)
     
-    # Enable CORS for production deployment (direct backend access)
-    # Read allowed origins from environment variable
+    # Configure CORS
     cors_origins = os.environ.get('CORS_ORIGINS', 'https://skillbridge.asolvitra.tech').split(',')
-    CORS(app, 
-         resources={r"/*": {"origins": cors_origins}},
-         supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization"],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    logger.info(f"🌐 CORS enabled for origins: {cors_origins}")
+    is_production = os.environ.get('FLASK_ENV') == 'production'
+    
+    # In production, Nginx/Render handles CORS headers. Flask-CORS is only needed for local dev.
+    if not is_production:
+        CORS(app, 
+             resources={r"/*": {"origins": cors_origins}},
+             supports_credentials=True,
+             allow_headers=["Content-Type", "Authorization"],
+             methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+        logger.info(f"🌐 CORS enabled by Flask for origins: {cors_origins}")
+    else:
+        logger.info("🌐 Flask-CORS disabled (Handled by Nginx/Proxy in production)")
 
     
     # Initialize Firebase with detailed status reporting
