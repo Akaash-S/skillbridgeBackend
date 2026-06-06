@@ -20,6 +20,12 @@ class Config:
     ADZUNA_APP_ID = os.environ.get('ADZUNA_APP_ID')
     ADZUNA_APP_KEY = os.environ.get('ADZUNA_APP_KEY')
     
+    # Groq AI (Learning Assistant)
+    GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+    GROQ_MODEL = os.environ.get('GROQ_MODEL', 'llama-3.3-70b-versatile')
+    ASSISTANT_MAX_WORDS = int(os.environ.get('ASSISTANT_MAX_WORDS', 250))
+    ASSISTANT_MAX_MESSAGES_PER_SESSION = int(os.environ.get('ASSISTANT_MAX_MESSAGES_PER_SESSION', 10))
+    
     # SMTP Email Configuration
     SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
     SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))

@@ -88,6 +88,7 @@ def create_app():
     from app.routes.certificate import certificate_bp
     from app.routes.assessment import assessment_bp
     from app.routes.learning_journey import learning_journey_bp
+    from app.routes.assistant import assistant_bp
     
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(users_bp, url_prefix='/users')
@@ -105,6 +106,7 @@ def create_app():
     app.register_blueprint(certificate_bp, url_prefix='/certificate')
     app.register_blueprint(assessment_bp, url_prefix='/assessment')
     app.register_blueprint(learning_journey_bp, url_prefix='')
+    app.register_blueprint(assistant_bp, url_prefix='/assistant')
     
     @app.route('/health')
     def health_check():
