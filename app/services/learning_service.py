@@ -6,6 +6,53 @@ import os
 
 logger = logging.getLogger(__name__)
 
+OFFICIAL_DOCS_MAPPING = {
+    'html': [
+        {'title': 'MDN Web Docs: HTML', 'url': 'https://developer.mozilla.org/en-US/docs/Web/HTML', 'provider': 'Mozilla MDN'},
+        {'title': 'HTML Living Standard', 'url': 'https://html.spec.whatwg.org/', 'provider': 'WHATWG'}
+    ],
+    'css': [
+        {'title': 'MDN Web Docs: CSS', 'url': 'https://developer.mozilla.org/en-US/docs/Web/CSS', 'provider': 'Mozilla MDN'},
+        {'title': 'W3C CSS Home', 'url': 'https://www.w3.org/Style/CSS/', 'provider': 'W3C'}
+    ],
+    'javascript': [
+        {'title': 'MDN Web Docs: JavaScript Guide', 'url': 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide', 'provider': 'Mozilla MDN'},
+        {'title': 'Modern JavaScript Tutorial', 'url': 'https://javascript.info/', 'provider': 'Javascript.info'}
+    ],
+    'typescript': [
+        {'title': 'TypeScript Documentation', 'url': 'https://www.typescriptlang.org/docs/', 'provider': 'Microsoft'},
+        {'title': 'TypeScript Deep Dive', 'url': 'https://basarat.gitbook.io/typescript/', 'provider': 'Basarat Ali'}
+    ],
+    'react': [
+        {'title': 'React Documentation & Reference', 'url': 'https://react.dev/reference/react', 'provider': 'Meta'},
+        {'title': 'React Dev Guides', 'url': 'https://react.dev/learn', 'provider': 'Meta'}
+    ],
+    'python': [
+        {'title': 'Python 3 Documentation', 'url': 'https://docs.python.org/3/', 'provider': 'Python Software Foundation'},
+        {'title': 'The Hitchhiker\'s Guide to Python', 'url': 'https://docs.python-guide.org/', 'provider': 'Kenneth Reitz'}
+    ],
+    'sql': [
+        {'title': 'W3Schools SQL Tutorial', 'url': 'https://www.w3schools.com/sql/', 'provider': 'W3Schools'},
+        {'title': 'PostgreSQL Documentation', 'url': 'https://www.postgresql.org/docs/', 'provider': 'PostgreSQL'}
+    ],
+    'docker': [
+        {'title': 'Docker Documentation Home', 'url': 'https://docs.docker.com/', 'provider': 'Docker Inc.'},
+        {'title': 'Docker Get Started Guide', 'url': 'https://docs.docker.com/get-started/', 'provider': 'Docker Inc.'}
+    ],
+    'kubernetes': [
+        {'title': 'Kubernetes Documentation', 'url': 'https://kubernetes.io/docs/home/', 'provider': 'CNCF'},
+        {'title': 'Kubernetes Tutorials', 'url': 'https://kubernetes.io/docs/tutorials/', 'provider': 'CNCF'}
+    ],
+    'aws': [
+        {'title': 'AWS Documentation Center', 'url': 'https://docs.aws.amazon.com/', 'provider': 'Amazon Web Services'},
+        {'title': 'AWS Getting Started Guides', 'url': 'https://aws.amazon.com/getting-started/', 'provider': 'Amazon Web Services'}
+    ],
+    'git': [
+        {'title': 'Git Reference Manual', 'url': 'https://git-scm.com/doc', 'provider': 'Git Core'},
+        {'title': 'Pro Git Book', 'url': 'https://git-scm.com/book/en/v2', 'provider': 'Scott Chacon & Ben Straub'}
+    ]
+}
+
 class LearningService:
     """Learning resources and progress tracking service"""
     
@@ -32,6 +79,13 @@ class LearningService:
                 yt_videos = self.fetch_and_cache_youtube_videos(skill_id, friendly_name)
                 if yt_videos:
                     resources.extend(yt_videos)
+                    
+            # Check if we have documentation resources for this skill. If not, generate and cache them.
+            docs = [r for r in resources if r.get('type') in ['documentation', 'book', 'article']]
+            if len(docs) < 2 and (not resource_type or resource_type != 'video'):
+                new_docs = self.generate_and_cache_documentation_resources(skill_id)
+                if new_docs:
+                    resources.extend(new_docs)
             
             # Sort by rating (highest first) and verified status
             resources.sort(key=lambda x: (x.get('verified', False), x.get('rating', 0)), reverse=True)
@@ -104,6 +158,55 @@ class LearningService:
             
         except Exception as e:
             logger.error(f"Error fetching/caching YouTube videos for {skill_id}: {str(e)}")
+            return []
+
+    def generate_and_cache_documentation_resources(self, skill_id: str) -> List[Dict]:
+        """Generate official/fallback documentation resources for a skill and cache them in Firestore"""
+        try:
+            # Look up in mapping
+            mapped_docs = OFFICIAL_DOCS_MAPPING.get(skill_id.lower())
+            
+            if not mapped_docs:
+                # Fallback generator for unknown skill
+                friendly_name = skill_id.replace('-', ' ').replace('_', ' ').title()
+                mapped_docs = [
+                    {
+                        'title': f'{friendly_name} Developer Documentation',
+                        'url': f'https://devdocs.io/{skill_id.lower()}/',
+                        'provider': 'DevDocs'
+                    },
+                    {
+                        'title': f'Google Search: {friendly_name} Docs',
+                        'url': f'https://www.google.com/search?q={friendly_name}+official+documentation',
+                        'provider': 'Google Search'
+                    }
+                ]
+                
+            new_resources = []
+            for i, doc in enumerate(mapped_docs):
+                resource_id = f"doc_{skill_id}_{i+1}"
+                
+                doc_resource = {
+                    'id': resource_id,
+                    'skillId': skill_id,
+                    'title': doc['title'],
+                    'url': doc['url'],
+                    'type': 'documentation',
+                    'duration': 'Self-paced',
+                    'provider': doc['provider'],
+                    'rating': 4.8,
+                    'verified': True,
+                    'level': 'intermediate'
+                }
+                
+                # Cache to firestore
+                self.db_service.create_document('learning_resources', resource_id, doc_resource)
+                new_resources.append(doc_resource)
+                
+            return new_resources
+            
+        except Exception as e:
+            logger.error(f"Error generating/caching documentation for {skill_id}: {str(e)}")
             return []
     
     def search_learning_resources(self, query: str, limit: int = 20) -> List[Dict]:
