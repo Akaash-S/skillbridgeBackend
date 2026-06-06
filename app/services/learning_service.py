@@ -6,51 +6,396 @@ import os
 
 logger = logging.getLogger(__name__)
 
-OFFICIAL_DOCS_MAPPING = {
+# ──────────────────────────────────────────────────────────────────────────────
+# Role-specific documentation mapping
+# Each role has its own curated set of documentation for every skill in its
+# roadmap.  When a skill appears in multiple roles (e.g. "python" in both
+# backend-dev and data-scientist) each role gets resources appropriate to its
+# context and depth.
+# ──────────────────────────────────────────────────────────────────────────────
+
+ROLE_SPECIFIC_DOCS = {
+    # ── Frontend Developer ──────────────────────────────────────────────────
+    'frontend-dev': {
+        'html': [
+            {'title': 'MDN Web Docs: HTML', 'url': 'https://developer.mozilla.org/en-US/docs/Web/HTML', 'provider': 'Mozilla MDN'},
+            {'title': 'HTML Living Standard', 'url': 'https://html.spec.whatwg.org/', 'provider': 'WHATWG'},
+            {'title': 'Web Accessibility (WAI-ARIA)', 'url': 'https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA', 'provider': 'Mozilla MDN'}
+        ],
+        'css': [
+            {'title': 'MDN Web Docs: CSS', 'url': 'https://developer.mozilla.org/en-US/docs/Web/CSS', 'provider': 'Mozilla MDN'},
+            {'title': 'CSS-Tricks Complete Guide to Flexbox', 'url': 'https://css-tricks.com/snippets/css/a-guide-to-flexbox/', 'provider': 'CSS-Tricks'},
+            {'title': 'CSS Grid Layout Guide', 'url': 'https://css-tricks.com/snippets/css/complete-guide-grid/', 'provider': 'CSS-Tricks'}
+        ],
+        'js': [
+            {'title': 'MDN JavaScript Guide', 'url': 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide', 'provider': 'Mozilla MDN'},
+            {'title': 'Modern JavaScript Tutorial', 'url': 'https://javascript.info/', 'provider': 'Javascript.info'},
+            {'title': 'DOM Manipulation Guide', 'url': 'https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Client-side_web_APIs/Manipulating_documents', 'provider': 'Mozilla MDN'}
+        ],
+        'ts': [
+            {'title': 'TypeScript Handbook', 'url': 'https://www.typescriptlang.org/docs/handbook/', 'provider': 'Microsoft'},
+            {'title': 'TypeScript in React', 'url': 'https://react.dev/learn/typescript', 'provider': 'Meta'}
+        ],
+        'react': [
+            {'title': 'React Official Documentation', 'url': 'https://react.dev/reference/react', 'provider': 'Meta'},
+            {'title': 'React Learn: Quick Start', 'url': 'https://react.dev/learn', 'provider': 'Meta'},
+            {'title': 'React Hooks Reference', 'url': 'https://react.dev/reference/react/hooks', 'provider': 'Meta'}
+        ],
+        'redux': [
+            {'title': 'Redux Toolkit Documentation', 'url': 'https://redux-toolkit.js.org/introduction/getting-started', 'provider': 'Redux'},
+            {'title': 'Redux Essentials Tutorial', 'url': 'https://redux.js.org/tutorials/essentials/part-1-overview-concepts', 'provider': 'Redux'}
+        ],
+        'git': [
+            {'title': 'Git for Frontend Developers', 'url': 'https://www.atlassian.com/git/tutorials', 'provider': 'Atlassian'},
+            {'title': 'Pro Git Book', 'url': 'https://git-scm.com/book/en/v2', 'provider': 'Scott Chacon & Ben Straub'}
+        ],
+        'webpack': [
+            {'title': 'Webpack Getting Started', 'url': 'https://webpack.js.org/guides/getting-started/', 'provider': 'Webpack'},
+            {'title': 'Vite Documentation', 'url': 'https://vitejs.dev/guide/', 'provider': 'Vite'}
+        ],
+        'tailwind': [
+            {'title': 'Tailwind CSS Documentation', 'url': 'https://tailwindcss.com/docs', 'provider': 'Tailwind Labs'},
+            {'title': 'Tailwind CSS Component Examples', 'url': 'https://tailwindui.com/components', 'provider': 'Tailwind Labs'}
+        ]
+    },
+
+    # ── Backend Developer ───────────────────────────────────────────────────
+    'backend-dev': {
+        'python': [
+            {'title': 'Python 3 Official Tutorial', 'url': 'https://docs.python.org/3/tutorial/', 'provider': 'Python.org'},
+            {'title': 'Real Python: Backend Development', 'url': 'https://realpython.com/tutorials/web-dev/', 'provider': 'Real Python'},
+            {'title': 'Python Design Patterns', 'url': 'https://refactoring.guru/design-patterns/python', 'provider': 'Refactoring Guru'}
+        ],
+        'sql': [
+            {'title': 'PostgreSQL Official Documentation', 'url': 'https://www.postgresql.org/docs/', 'provider': 'PostgreSQL'},
+            {'title': 'SQL for Backend Developers', 'url': 'https://www.w3schools.com/sql/', 'provider': 'W3Schools'},
+            {'title': 'Database Design & Normalization', 'url': 'https://www.guru99.com/database-normalization.html', 'provider': 'Guru99'}
+        ],
+        'flask': [
+            {'title': 'Flask Official Documentation', 'url': 'https://flask.palletsprojects.com/', 'provider': 'Pallets Project'},
+            {'title': 'Flask Mega-Tutorial', 'url': 'https://blog.miguelgrinberg.com/post/the-flask-mega-tutorial-part-i-hello-world', 'provider': 'Miguel Grinberg'}
+        ],
+        'django': [
+            {'title': 'Django Official Documentation', 'url': 'https://docs.djangoproject.com/', 'provider': 'Django Project'},
+            {'title': 'Django REST Framework', 'url': 'https://www.django-rest-framework.org/', 'provider': 'DRF'}
+        ],
+        'postgresql': [
+            {'title': 'PostgreSQL Documentation', 'url': 'https://www.postgresql.org/docs/', 'provider': 'PostgreSQL'},
+            {'title': 'PostgreSQL Tutorial', 'url': 'https://www.postgresqltutorial.com/', 'provider': 'PostgreSQL Tutorial'}
+        ],
+        'rest-api': [
+            {'title': 'RESTful API Design Guide', 'url': 'https://restfulapi.net/', 'provider': 'RESTful API'},
+            {'title': 'API Design Best Practices', 'url': 'https://swagger.io/resources/articles/best-practices-in-api-design/', 'provider': 'Swagger'}
+        ],
+        'git': [
+            {'title': 'Git Branching Strategies for Teams', 'url': 'https://www.atlassian.com/git/tutorials/comparing-workflows', 'provider': 'Atlassian'},
+            {'title': 'Pro Git Book', 'url': 'https://git-scm.com/book/en/v2', 'provider': 'Scott Chacon & Ben Straub'}
+        ],
+        'docker': [
+            {'title': 'Docker for Backend Development', 'url': 'https://docs.docker.com/get-started/', 'provider': 'Docker Inc.'},
+            {'title': 'Dockerize Python Applications', 'url': 'https://docs.docker.com/language/python/', 'provider': 'Docker Inc.'}
+        ],
+        'nodejs': [
+            {'title': 'Node.js Documentation', 'url': 'https://nodejs.org/en/docs/', 'provider': 'Node.js'},
+            {'title': 'Express.js Guide', 'url': 'https://expressjs.com/en/guide/routing.html', 'provider': 'Express.js'}
+        ]
+    },
+
+    # ── Full Stack Developer ────────────────────────────────────────────────
+    'fullstack-dev': {
+        'html': [
+            {'title': 'MDN Web Docs: HTML', 'url': 'https://developer.mozilla.org/en-US/docs/Web/HTML', 'provider': 'Mozilla MDN'},
+            {'title': 'Semantic HTML for Full Stack Devs', 'url': 'https://web.dev/learn/html', 'provider': 'Google web.dev'}
+        ],
+        'css': [
+            {'title': 'MDN Web Docs: CSS', 'url': 'https://developer.mozilla.org/en-US/docs/Web/CSS', 'provider': 'Mozilla MDN'},
+            {'title': 'Modern CSS Solutions', 'url': 'https://moderncss.dev/', 'provider': 'Stephanie Eckles'}
+        ],
+        'js': [
+            {'title': 'JavaScript for Full Stack Developers', 'url': 'https://javascript.info/', 'provider': 'Javascript.info'},
+            {'title': 'Full Stack Open – JavaScript', 'url': 'https://fullstackopen.com/en/part1', 'provider': 'University of Helsinki'}
+        ],
+        'python': [
+            {'title': 'Python Official Documentation', 'url': 'https://docs.python.org/3/', 'provider': 'Python.org'},
+            {'title': 'Full Stack Python', 'url': 'https://www.fullstackpython.com/', 'provider': 'Full Stack Python'}
+        ],
+        'nodejs': [
+            {'title': 'Node.js Documentation', 'url': 'https://nodejs.org/en/docs/', 'provider': 'Node.js'},
+            {'title': 'Full Stack Open – Node', 'url': 'https://fullstackopen.com/en/part3', 'provider': 'University of Helsinki'}
+        ],
+        'sql': [
+            {'title': 'SQL Tutorial', 'url': 'https://www.w3schools.com/sql/', 'provider': 'W3Schools'},
+            {'title': 'Full Stack Database Design', 'url': 'https://www.postgresqltutorial.com/', 'provider': 'PostgreSQL Tutorial'}
+        ],
+        'rest-api': [
+            {'title': 'RESTful API Best Practices', 'url': 'https://restfulapi.net/', 'provider': 'RESTful API'},
+            {'title': 'GraphQL vs REST', 'url': 'https://graphql.org/learn/', 'provider': 'GraphQL Foundation'}
+        ],
+        'react': [
+            {'title': 'React Official Docs', 'url': 'https://react.dev/learn', 'provider': 'Meta'},
+            {'title': 'Full Stack Open – React', 'url': 'https://fullstackopen.com/en/part1', 'provider': 'University of Helsinki'}
+        ],
+        'git': [
+            {'title': 'Git & GitHub for Full Stack Devs', 'url': 'https://www.atlassian.com/git/tutorials', 'provider': 'Atlassian'},
+            {'title': 'Git Reference Manual', 'url': 'https://git-scm.com/doc', 'provider': 'Git Core'}
+        ],
+        'ts': [
+            {'title': 'TypeScript Documentation', 'url': 'https://www.typescriptlang.org/docs/', 'provider': 'Microsoft'},
+            {'title': 'TypeScript Deep Dive', 'url': 'https://basarat.gitbook.io/typescript/', 'provider': 'Basarat Ali'}
+        ],
+        'postgresql': [
+            {'title': 'PostgreSQL Documentation', 'url': 'https://www.postgresql.org/docs/', 'provider': 'PostgreSQL'},
+            {'title': 'PostgreSQL Tutorial', 'url': 'https://www.postgresqltutorial.com/', 'provider': 'PostgreSQL Tutorial'}
+        ]
+    },
+
+    # ── Data Scientist ──────────────────────────────────────────────────────
+    'data-scientist': {
+        'python': [
+            {'title': 'Python for Data Science Handbook', 'url': 'https://jakevdp.github.io/PythonDataScienceHandbook/', 'provider': 'Jake VanderPlas'},
+            {'title': 'Kaggle: Python Course', 'url': 'https://www.kaggle.com/learn/python', 'provider': 'Kaggle'},
+            {'title': 'Real Python: Data Science', 'url': 'https://realpython.com/tutorials/data-science/', 'provider': 'Real Python'}
+        ],
+        'sql': [
+            {'title': 'Kaggle: SQL Course', 'url': 'https://www.kaggle.com/learn/intro-to-sql', 'provider': 'Kaggle'},
+            {'title': 'SQL for Data Scientists', 'url': 'https://mode.com/sql-tutorial/', 'provider': 'Mode Analytics'}
+        ],
+        'pandas': [
+            {'title': 'Pandas Official Documentation', 'url': 'https://pandas.pydata.org/docs/', 'provider': 'Pandas'},
+            {'title': 'Kaggle: Pandas Course', 'url': 'https://www.kaggle.com/learn/pandas', 'provider': 'Kaggle'},
+            {'title': '10 Minutes to Pandas', 'url': 'https://pandas.pydata.org/docs/user_guide/10min.html', 'provider': 'Pandas'}
+        ],
+        'numpy': [
+            {'title': 'NumPy Official Documentation', 'url': 'https://numpy.org/doc/stable/', 'provider': 'NumPy'},
+            {'title': 'NumPy Quickstart Tutorial', 'url': 'https://numpy.org/doc/stable/user/quickstart.html', 'provider': 'NumPy'}
+        ],
+        'scikit-learn': [
+            {'title': 'Scikit-learn Official Tutorials', 'url': 'https://scikit-learn.org/stable/tutorial/index.html', 'provider': 'Scikit-learn'},
+            {'title': 'Kaggle: Intro to ML', 'url': 'https://www.kaggle.com/learn/intro-to-machine-learning', 'provider': 'Kaggle'}
+        ],
+        'tensorflow': [
+            {'title': 'TensorFlow Tutorials', 'url': 'https://www.tensorflow.org/tutorials', 'provider': 'TensorFlow'},
+            {'title': 'Keras Documentation', 'url': 'https://keras.io/guides/', 'provider': 'Keras'}
+        ],
+        'matplotlib': [
+            {'title': 'Matplotlib Tutorials', 'url': 'https://matplotlib.org/stable/tutorials/index.html', 'provider': 'Matplotlib'},
+            {'title': 'Data Visualization with Python', 'url': 'https://seaborn.pydata.org/tutorial.html', 'provider': 'Seaborn'}
+        ],
+        'tableau': [
+            {'title': 'Tableau Public Training', 'url': 'https://public.tableau.com/app/resources/learn', 'provider': 'Tableau'},
+            {'title': 'Tableau Learning Resources', 'url': 'https://www.tableau.com/learn/training', 'provider': 'Tableau'}
+        ]
+    },
+
+    # ── DevOps Engineer ─────────────────────────────────────────────────────
+    'devops-engineer': {
+        'linux': [
+            {'title': 'Linux Documentation Project', 'url': 'https://tldp.org/', 'provider': 'TLDP'},
+            {'title': 'Linux Command Line Basics', 'url': 'https://linuxjourney.com/', 'provider': 'Linux Journey'},
+            {'title': 'RHEL System Administration', 'url': 'https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/', 'provider': 'Red Hat'}
+        ],
+        'bash': [
+            {'title': 'Bash Reference Manual', 'url': 'https://www.gnu.org/software/bash/manual/', 'provider': 'GNU'},
+            {'title': 'Advanced Bash-Scripting Guide', 'url': 'https://tldp.org/LDP/abs/html/', 'provider': 'TLDP'}
+        ],
+        'docker': [
+            {'title': 'Docker Documentation', 'url': 'https://docs.docker.com/', 'provider': 'Docker Inc.'},
+            {'title': 'Docker Compose Guide', 'url': 'https://docs.docker.com/compose/', 'provider': 'Docker Inc.'},
+            {'title': 'Docker Security Best Practices', 'url': 'https://docs.docker.com/engine/security/', 'provider': 'Docker Inc.'}
+        ],
+        'kubernetes': [
+            {'title': 'Kubernetes Official Documentation', 'url': 'https://kubernetes.io/docs/home/', 'provider': 'CNCF'},
+            {'title': 'Kubernetes the Hard Way', 'url': 'https://github.com/kelseyhightower/kubernetes-the-hard-way', 'provider': 'Kelsey Hightower'},
+            {'title': 'Kubernetes Patterns', 'url': 'https://kubernetes.io/docs/concepts/workloads/', 'provider': 'CNCF'}
+        ],
+        'aws': [
+            {'title': 'AWS DevOps Documentation', 'url': 'https://docs.aws.amazon.com/devops/', 'provider': 'AWS'},
+            {'title': 'AWS Well-Architected Framework', 'url': 'https://aws.amazon.com/architecture/well-architected/', 'provider': 'AWS'}
+        ],
+        'terraform': [
+            {'title': 'Terraform Documentation', 'url': 'https://developer.hashicorp.com/terraform/docs', 'provider': 'HashiCorp'},
+            {'title': 'Learn Terraform', 'url': 'https://developer.hashicorp.com/terraform/tutorials', 'provider': 'HashiCorp'}
+        ],
+        'jenkins': [
+            {'title': 'Jenkins Documentation', 'url': 'https://www.jenkins.io/doc/', 'provider': 'Jenkins'},
+            {'title': 'Jenkins Pipeline Syntax', 'url': 'https://www.jenkins.io/doc/book/pipeline/syntax/', 'provider': 'Jenkins'}
+        ],
+        'prometheus': [
+            {'title': 'Prometheus Documentation', 'url': 'https://prometheus.io/docs/introduction/overview/', 'provider': 'Prometheus'},
+            {'title': 'Grafana + Prometheus Guide', 'url': 'https://grafana.com/docs/grafana/latest/datasources/prometheus/', 'provider': 'Grafana Labs'}
+        ]
+    },
+
+    # ── ML Engineer ─────────────────────────────────────────────────────────
+    'ml-engineer': {
+        'python': [
+            {'title': 'Python for ML Engineers', 'url': 'https://scikit-learn.org/stable/tutorial/index.html', 'provider': 'Scikit-learn'},
+            {'title': 'Kaggle: Python for Data Science', 'url': 'https://www.kaggle.com/learn/python', 'provider': 'Kaggle'},
+            {'title': 'Advanced Python Patterns for ML', 'url': 'https://realpython.com/tutorials/machine-learning/', 'provider': 'Real Python'}
+        ],
+        'statistics': [
+            {'title': 'Khan Academy: Statistics', 'url': 'https://www.khanacademy.org/math/statistics-probability', 'provider': 'Khan Academy'},
+            {'title': 'Think Stats (Free Book)', 'url': 'https://greenteapress.com/thinkstats2/html/index.html', 'provider': 'Allen B. Downey'}
+        ],
+        'scikit-learn': [
+            {'title': 'Scikit-learn User Guide', 'url': 'https://scikit-learn.org/stable/user_guide.html', 'provider': 'Scikit-learn'},
+            {'title': 'ML with Scikit-learn – Kaggle', 'url': 'https://www.kaggle.com/learn/intermediate-machine-learning', 'provider': 'Kaggle'}
+        ],
+        'pandas': [
+            {'title': 'Pandas for ML Feature Engineering', 'url': 'https://pandas.pydata.org/docs/', 'provider': 'Pandas'},
+            {'title': 'Kaggle: Feature Engineering', 'url': 'https://www.kaggle.com/learn/feature-engineering', 'provider': 'Kaggle'}
+        ],
+        'tensorflow': [
+            {'title': 'TensorFlow Developer Documentation', 'url': 'https://www.tensorflow.org/learn', 'provider': 'TensorFlow'},
+            {'title': 'TensorFlow Model Garden', 'url': 'https://github.com/tensorflow/models', 'provider': 'TensorFlow'},
+            {'title': 'TensorFlow Certification Guide', 'url': 'https://www.tensorflow.org/certificate', 'provider': 'TensorFlow'}
+        ],
+        'pytorch': [
+            {'title': 'PyTorch Official Tutorials', 'url': 'https://pytorch.org/tutorials/', 'provider': 'PyTorch'},
+            {'title': 'Deep Learning with PyTorch', 'url': 'https://pytorch.org/deep-learning-with-pytorch', 'provider': 'PyTorch'}
+        ],
+        'mlflow': [
+            {'title': 'MLflow Documentation', 'url': 'https://mlflow.org/docs/latest/index.html', 'provider': 'MLflow'},
+            {'title': 'MLOps Guide', 'url': 'https://ml-ops.org/', 'provider': 'ML-Ops Community'}
+        ],
+        'docker': [
+            {'title': 'Docker for ML Deployment', 'url': 'https://docs.docker.com/get-started/', 'provider': 'Docker Inc.'},
+            {'title': 'Containerizing ML Pipelines', 'url': 'https://docs.docker.com/language/python/', 'provider': 'Docker Inc.'}
+        ]
+    },
+
+    # ── Cloud Architect ─────────────────────────────────────────────────────
+    'cloud-architect': {
+        'aws': [
+            {'title': 'AWS Solutions Architect – Learning Path', 'url': 'https://aws.amazon.com/certification/certified-solutions-architect-associate/', 'provider': 'AWS'},
+            {'title': 'AWS Well-Architected Framework', 'url': 'https://aws.amazon.com/architecture/well-architected/', 'provider': 'AWS'},
+            {'title': 'AWS Architecture Center', 'url': 'https://aws.amazon.com/architecture/', 'provider': 'AWS'}
+        ],
+        'azure': [
+            {'title': 'Microsoft Azure Documentation', 'url': 'https://learn.microsoft.com/en-us/azure/', 'provider': 'Microsoft'},
+            {'title': 'Azure Architecture Center', 'url': 'https://learn.microsoft.com/en-us/azure/architecture/', 'provider': 'Microsoft'}
+        ],
+        'terraform': [
+            {'title': 'Terraform Associate Certification', 'url': 'https://developer.hashicorp.com/terraform/tutorials/certification', 'provider': 'HashiCorp'},
+            {'title': 'Advanced Terraform Patterns', 'url': 'https://developer.hashicorp.com/terraform/tutorials', 'provider': 'HashiCorp'}
+        ],
+        'cloudformation': [
+            {'title': 'AWS CloudFormation Documentation', 'url': 'https://docs.aws.amazon.com/cloudformation/', 'provider': 'AWS'},
+            {'title': 'CloudFormation Best Practices', 'url': 'https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/best-practices.html', 'provider': 'AWS'}
+        ],
+        'cloud-security': [
+            {'title': 'AWS Security Documentation', 'url': 'https://docs.aws.amazon.com/security/', 'provider': 'AWS'},
+            {'title': 'Cloud Security Alliance Guide', 'url': 'https://cloudsecurityalliance.org/research/guidance', 'provider': 'CSA'}
+        ],
+        'iam': [
+            {'title': 'AWS IAM Documentation', 'url': 'https://docs.aws.amazon.com/IAM/latest/UserGuide/', 'provider': 'AWS'},
+            {'title': 'Zero Trust Architecture (NIST)', 'url': 'https://csrc.nist.gov/publications/detail/sp/800-207/final', 'provider': 'NIST'}
+        ],
+        'microservices': [
+            {'title': 'Microservices.io', 'url': 'https://microservices.io/', 'provider': 'Chris Richardson'},
+            {'title': 'Building Microservices (Martin Fowler)', 'url': 'https://martinfowler.com/articles/microservices.html', 'provider': 'Martin Fowler'}
+        ],
+        'system-design': [
+            {'title': 'System Design Primer', 'url': 'https://github.com/donnemartin/system-design-primer', 'provider': 'Donne Martin'},
+            {'title': 'Cloud Design Patterns', 'url': 'https://learn.microsoft.com/en-us/azure/architecture/patterns/', 'provider': 'Microsoft'}
+        ]
+    },
+
+    # ── Tech Lead ───────────────────────────────────────────────────────────
+    'tech-lead': {
+        'system-design': [
+            {'title': 'System Design Primer', 'url': 'https://github.com/donnemartin/system-design-primer', 'provider': 'Donne Martin'},
+            {'title': 'Grokking System Design', 'url': 'https://www.designgurus.io/course/grokking-the-system-design-interview', 'provider': 'Design Gurus'}
+        ],
+        'design-patterns': [
+            {'title': 'Refactoring Guru – Design Patterns', 'url': 'https://refactoring.guru/design-patterns', 'provider': 'Refactoring Guru'},
+            {'title': 'Source Making – Patterns', 'url': 'https://sourcemaking.com/design_patterns', 'provider': 'Source Making'}
+        ],
+        'team-leadership': [
+            {'title': 'Engineering Manager Resources', 'url': 'https://github.com/charlax/engineering-management', 'provider': 'Community'},
+            {'title': 'Staff Engineer Guide', 'url': 'https://staffeng.com/', 'provider': 'Will Larson'}
+        ],
+        'communication': [
+            {'title': 'Technical Writing (Google)', 'url': 'https://developers.google.com/tech-writing', 'provider': 'Google'},
+            {'title': 'Architecture Decision Records', 'url': 'https://adr.github.io/', 'provider': 'ADR Community'}
+        ],
+        'agile': [
+            {'title': 'Agile Manifesto & Principles', 'url': 'https://agilemanifesto.org/', 'provider': 'Agile Alliance'},
+            {'title': 'Scrum Guide', 'url': 'https://scrumguides.org/', 'provider': 'Scrum.org'}
+        ],
+        'project-management': [
+            {'title': 'Atlassian Agile Coach', 'url': 'https://www.atlassian.com/agile', 'provider': 'Atlassian'},
+            {'title': 'Project Management for Developers', 'url': 'https://www.pmi.org/learning/library', 'provider': 'PMI'}
+        ],
+        'architecture': [
+            {'title': 'Martin Fowler – Software Architecture', 'url': 'https://martinfowler.com/architecture/', 'provider': 'Martin Fowler'},
+            {'title': 'The Twelve-Factor App', 'url': 'https://12factor.net/', 'provider': '12 Factor'}
+        ],
+        'code-review': [
+            {'title': 'Google Code Review Guidelines', 'url': 'https://google.github.io/eng-practices/review/', 'provider': 'Google'},
+            {'title': 'Effective Code Reviews', 'url': 'https://github.com/google/eng-practices', 'provider': 'Google'}
+        ]
+    }
+}
+
+# Flat fallback mapping used when role is unknown or skill isn't listed for a role
+GENERIC_DOCS_FALLBACK = {
     'html': [
-        {'title': 'MDN Web Docs: HTML', 'url': 'https://developer.mozilla.org/en-US/docs/Web/HTML', 'provider': 'Mozilla MDN'},
-        {'title': 'HTML Living Standard', 'url': 'https://html.spec.whatwg.org/', 'provider': 'WHATWG'}
+        {'title': 'MDN Web Docs: HTML', 'url': 'https://developer.mozilla.org/en-US/docs/Web/HTML', 'provider': 'Mozilla MDN'}
     ],
     'css': [
-        {'title': 'MDN Web Docs: CSS', 'url': 'https://developer.mozilla.org/en-US/docs/Web/CSS', 'provider': 'Mozilla MDN'},
-        {'title': 'W3C CSS Home', 'url': 'https://www.w3.org/Style/CSS/', 'provider': 'W3C'}
+        {'title': 'MDN Web Docs: CSS', 'url': 'https://developer.mozilla.org/en-US/docs/Web/CSS', 'provider': 'Mozilla MDN'}
     ],
     'javascript': [
-        {'title': 'MDN Web Docs: JavaScript Guide', 'url': 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide', 'provider': 'Mozilla MDN'},
+        {'title': 'MDN JavaScript Guide', 'url': 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide', 'provider': 'Mozilla MDN'}
+    ],
+    'js': [
         {'title': 'Modern JavaScript Tutorial', 'url': 'https://javascript.info/', 'provider': 'Javascript.info'}
     ],
     'typescript': [
-        {'title': 'TypeScript Documentation', 'url': 'https://www.typescriptlang.org/docs/', 'provider': 'Microsoft'},
-        {'title': 'TypeScript Deep Dive', 'url': 'https://basarat.gitbook.io/typescript/', 'provider': 'Basarat Ali'}
+        {'title': 'TypeScript Documentation', 'url': 'https://www.typescriptlang.org/docs/', 'provider': 'Microsoft'}
+    ],
+    'ts': [
+        {'title': 'TypeScript Documentation', 'url': 'https://www.typescriptlang.org/docs/', 'provider': 'Microsoft'}
     ],
     'react': [
-        {'title': 'React Documentation & Reference', 'url': 'https://react.dev/reference/react', 'provider': 'Meta'},
-        {'title': 'React Dev Guides', 'url': 'https://react.dev/learn', 'provider': 'Meta'}
+        {'title': 'React Documentation', 'url': 'https://react.dev/learn', 'provider': 'Meta'}
     ],
     'python': [
-        {'title': 'Python 3 Documentation', 'url': 'https://docs.python.org/3/', 'provider': 'Python Software Foundation'},
-        {'title': 'The Hitchhiker\'s Guide to Python', 'url': 'https://docs.python-guide.org/', 'provider': 'Kenneth Reitz'}
+        {'title': 'Python 3 Documentation', 'url': 'https://docs.python.org/3/', 'provider': 'Python Software Foundation'}
     ],
     'sql': [
-        {'title': 'W3Schools SQL Tutorial', 'url': 'https://www.w3schools.com/sql/', 'provider': 'W3Schools'},
-        {'title': 'PostgreSQL Documentation', 'url': 'https://www.postgresql.org/docs/', 'provider': 'PostgreSQL'}
+        {'title': 'W3Schools SQL Tutorial', 'url': 'https://www.w3schools.com/sql/', 'provider': 'W3Schools'}
     ],
     'docker': [
-        {'title': 'Docker Documentation Home', 'url': 'https://docs.docker.com/', 'provider': 'Docker Inc.'},
-        {'title': 'Docker Get Started Guide', 'url': 'https://docs.docker.com/get-started/', 'provider': 'Docker Inc.'}
+        {'title': 'Docker Documentation', 'url': 'https://docs.docker.com/', 'provider': 'Docker Inc.'}
     ],
     'kubernetes': [
-        {'title': 'Kubernetes Documentation', 'url': 'https://kubernetes.io/docs/home/', 'provider': 'CNCF'},
-        {'title': 'Kubernetes Tutorials', 'url': 'https://kubernetes.io/docs/tutorials/', 'provider': 'CNCF'}
+        {'title': 'Kubernetes Documentation', 'url': 'https://kubernetes.io/docs/home/', 'provider': 'CNCF'}
     ],
     'aws': [
-        {'title': 'AWS Documentation Center', 'url': 'https://docs.aws.amazon.com/', 'provider': 'Amazon Web Services'},
-        {'title': 'AWS Getting Started Guides', 'url': 'https://aws.amazon.com/getting-started/', 'provider': 'Amazon Web Services'}
+        {'title': 'AWS Documentation', 'url': 'https://docs.aws.amazon.com/', 'provider': 'AWS'}
     ],
     'git': [
-        {'title': 'Git Reference Manual', 'url': 'https://git-scm.com/doc', 'provider': 'Git Core'},
         {'title': 'Pro Git Book', 'url': 'https://git-scm.com/book/en/v2', 'provider': 'Scott Chacon & Ben Straub'}
     ]
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Role-specific YouTube search query templates
+# Each role gets a specialised search pattern so the YouTube API returns
+# content that matches the user's career path instead of generic tutorials.
+# ──────────────────────────────────────────────────────────────────────────────
+
+ROLE_YOUTUBE_QUERIES = {
+    'frontend-dev': '{skill} frontend development tutorial {year}',
+    'backend-dev': '{skill} backend server development tutorial {year}',
+    'fullstack-dev': '{skill} full stack web development tutorial {year}',
+    'data-scientist': '{skill} data science machine learning tutorial {year}',
+    'devops-engineer': '{skill} devops CI/CD infrastructure tutorial {year}',
+    'ml-engineer': '{skill} machine learning engineering production tutorial {year}',
+    'cloud-architect': '{skill} cloud architecture enterprise tutorial {year}',
+    'tech-lead': '{skill} software engineering leadership tutorial {year}'
 }
 
 class LearningService:
@@ -112,11 +457,16 @@ class LearningService:
             
             youtube = build('youtube', 'v3', developerKey=api_key)
             
-            # Search query including the target role context if available
-            if role_title:
-                query = f"{skill_name} for {role_title} tutorial beginner course"
+            # Build a role-specific search query from the templates
+            current_year = datetime.utcnow().year
+            if role_id and role_id in ROLE_YOUTUBE_QUERIES:
+                query = ROLE_YOUTUBE_QUERIES[role_id].format(
+                    skill=skill_name, year=current_year
+                )
+            elif role_title:
+                query = f"{skill_name} for {role_title} tutorial {current_year}"
             else:
-                query = f"{skill_name} tutorial beginner course"
+                query = f"{skill_name} tutorial beginner course {current_year}"
             
             logger.info(f"Fetching fresh YouTube videos for query: {query}")
             search_request = youtube.search().list(
@@ -170,26 +520,26 @@ class LearningService:
             return []
 
     def generate_and_cache_documentation_resources(self, skill_id: str, role_title: str = None, role_id: str = None) -> List[Dict]:
-        """Generate official/fallback documentation resources for a skill and cache them in Firestore with role context"""
+        """Generate role-specific documentation resources for a skill and cache them in Firestore.
+        
+        Resolution order:
+        1. ROLE_SPECIFIC_DOCS[role_id][skill_id]  – curated, role-aware docs
+        2. GENERIC_DOCS_FALLBACK[skill_id]         – generic skill-level docs
+        3. Auto-generated DevDocs link              – last resort
+        """
         try:
-            # Look up in mapping
-            mapped_docs = OFFICIAL_DOCS_MAPPING.get(skill_id.lower())
-            
             friendly_name = skill_id.replace('-', ' ').replace('_', ' ').title()
             
-            # If we have role context, create a customized doc entry to add to it
-            role_custom_docs = []
-            if role_title:
-                role_custom_docs = [
-                    {
-                        'title': f'{friendly_name} Guide for {role_title}',
-                        'url': f'https://www.google.com/search?q={friendly_name}+for+{role_title.replace(" ", "+")}+official+documentation',
-                        'provider': f'{role_title} Reference'
-                    }
-                ]
+            # 1) Try role-specific docs first
+            role_docs_map = ROLE_SPECIFIC_DOCS.get(role_id, {}) if role_id else {}
+            mapped_docs = role_docs_map.get(skill_id.lower())
             
+            # 2) Fall back to generic docs if nothing role-specific
             if not mapped_docs:
-                # Fallback generator for unknown skill
+                mapped_docs = GENERIC_DOCS_FALLBACK.get(skill_id.lower())
+            
+            # 3) Ultimate fallback – auto-generated DevDocs link
+            if not mapped_docs:
                 mapped_docs = [
                     {
                         'title': f'{friendly_name} Developer Documentation',
@@ -198,11 +548,8 @@ class LearningService:
                     }
                 ]
                 
-            # Combine role-specific docs first, then general official docs
-            all_docs = role_custom_docs + mapped_docs
-                
             new_resources = []
-            for i, doc in enumerate(all_docs):
+            for i, doc in enumerate(mapped_docs):
                 resource_id = f"doc_{role_id}_{skill_id}_{i+1}" if role_id else f"doc_{skill_id}_{i+1}"
                 
                 doc_resource = {
@@ -438,6 +785,10 @@ class LearningService:
             # Get user's active roadmap
             roadmap = self.db_service.get_user_roadmap(uid)
             
+            # Extract role context from roadmap for role-specific resources
+            role_id = roadmap.get('roleId') if roadmap else None
+            role_title = roadmap.get('roleTitle', role_id.replace('-', ' ').title() if role_id else None) if roadmap else None
+            
             recommended_resources = []
             
             if roadmap:
@@ -456,8 +807,12 @@ class LearningService:
                         skill_id = skill.get('skillId')
                         target_level = skill.get('targetLevel', 'intermediate')
                         
-                        # Get resources for this skill
-                        resources = self.get_learning_resources(skill_id, target_level)
+                        # Get resources for this skill WITH role context
+                        resources = self.get_learning_resources(
+                            skill_id, target_level,
+                            role_title=role_title,
+                            role_id=role_id
+                        )
                         
                         # Add roadmap context to resources
                         for resource in resources[:2]:  # Limit per skill

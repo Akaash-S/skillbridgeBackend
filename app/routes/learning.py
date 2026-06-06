@@ -16,19 +16,28 @@ def get_learning_resources(skill_id):
     Query params:
     - level: beginner|intermediate|advanced (optional)
     - type: course|tutorial|documentation|video (optional)
+    - roleId: role identifier for role-specific resources (optional)
+    - roleTitle: human-readable role name (optional)
     """
     try:
         level = request.args.get('level')
         resource_type = request.args.get('type')
+        role_id = request.args.get('roleId')
+        role_title = request.args.get('roleTitle')
         
-        resources = learning_service.get_learning_resources(skill_id, level, resource_type)
+        resources = learning_service.get_learning_resources(
+            skill_id, level, resource_type,
+            role_title=role_title,
+            role_id=role_id
+        )
         
         return jsonify({
             'skillId': skill_id,
             'resources': resources,
             'filters': {
                 'level': level,
-                'type': resource_type
+                'type': resource_type,
+                'roleId': role_id
             }
         }), 200
         

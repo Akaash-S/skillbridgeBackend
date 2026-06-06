@@ -39,6 +39,7 @@ def generate_roadmap():
             }), 400
         
         target_role = data['targetRole']
+        role_title = target_role.replace('-', ' ').title()
         experience_level = data.get('experienceLevel', 'beginner')
         
         # Validate experience level
@@ -79,6 +80,7 @@ def generate_roadmap():
         roadmap_data = {
             'uid': uid,
             'roleId': target_role,
+            'roleTitle': role_title,
             'experienceLevel': experience_level,
             'milestones': customized_roadmap['milestones'],
             'generatedAt': datetime.utcnow(),
@@ -104,10 +106,19 @@ def generate_roadmap():
         
         # Convert to frontend RoadmapItem format
         roadmap_items = []
+        
+        # Get the learning service for role-specific resources
+        from app.services.learning_service import LearningService
+        learning_svc = LearningService()
+        
         for milestone in customized_roadmap['milestones']:
             for skill in milestone.get('skills', []):
-                # Get learning resources for this skill
-                resources = db_service.query_collection('learning_resources', [('skillId', '==', skill['skillId'])])
+                # Get learning resources for this skill with role context
+                resources = learning_svc.get_learning_resources(
+                    skill['skillId'],
+                    role_title=role_title,
+                    role_id=target_role
+                )
                 
                 # Format resources for frontend
                 formatted_resources = []
