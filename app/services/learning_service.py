@@ -59,8 +59,8 @@ class LearningService:
     def __init__(self):
         self.db_service = FirestoreService()
     
-    def get_learning_resources(self, skill_id: str, level: str = None, resource_type: str = None) -> List[Dict]:
-        """Get learning resources for a specific skill"""
+    def get_learning_resources(self, skill_id: str, level: str = None, resource_type: str = None, role_title: str = None, role_id: str = None) -> List[Dict]:
+        """Get learning resources for a specific skill, prioritizing/fetching role-specific ones"""
         try:
             filters = [('skillId', '==', skill_id)]
             
@@ -72,23 +72,27 @@ class LearningService:
             
             resources = self.db_service.query_collection('learning_resources', filters)
             
-            # Check if we have video resources for this skill. If not, fetch from YouTube API and cache them.
-            videos = [r for r in resources if r.get('type') == 'video']
-            if len(videos) < 2 and (not resource_type or resource_type == 'video'):
+            # Check if we have video resources for this skill matching the role. If not, fetch from YouTube API and cache them.
+            role_videos = [r for r in resources if r.get('type') == 'video' and r.get('roleId') == role_id]
+            if len(role_videos) < 2 and (not resource_type or resource_type == 'video') and role_title:
                 friendly_name = skill_id.replace('-', ' ').replace('_', ' ').title()
-                yt_videos = self.fetch_and_cache_youtube_videos(skill_id, friendly_name)
+                yt_videos = self.fetch_and_cache_youtube_videos(skill_id, friendly_name, role_title, role_id)
                 if yt_videos:
                     resources.extend(yt_videos)
                     
-            # Check if we have documentation resources for this skill. If not, generate and cache them.
-            docs = [r for r in resources if r.get('type') in ['documentation', 'book', 'article']]
-            if len(docs) < 2 and (not resource_type or resource_type != 'video'):
-                new_docs = self.generate_and_cache_documentation_resources(skill_id)
+            # Check if we have documentation resources for this skill matching the role. If not, generate and cache them.
+            role_docs = [r for r in resources if r.get('type') in ['documentation', 'book', 'article'] and r.get('roleId') == role_id]
+            if len(role_docs) < 2 and (not resource_type or resource_type != 'video') and role_title:
+                new_docs = self.generate_and_cache_documentation_resources(skill_id, role_title, role_id)
                 if new_docs:
                     resources.extend(new_docs)
             
-            # Sort by rating (highest first) and verified status
-            resources.sort(key=lambda x: (x.get('verified', False), x.get('rating', 0)), reverse=True)
+            # Prioritize matching roleId first, then by rating/verified status
+            resources.sort(key=lambda x: (
+                x.get('roleId') == role_id if role_id else False,
+                x.get('verified', False),
+                x.get('rating', 0)
+            ), reverse=True)
             
             return resources
             
@@ -96,8 +100,8 @@ class LearningService:
             logger.error(f"Error getting learning resources: {str(e)}")
             return []
 
-    def fetch_and_cache_youtube_videos(self, skill_id: str, skill_name: str) -> List[Dict]:
-        """Fetch videos from YouTube API for a skill and cache them in Firestore"""
+    def fetch_and_cache_youtube_videos(self, skill_id: str, skill_name: str, role_title: str = None, role_id: str = None) -> List[Dict]:
+        """Fetch videos from YouTube API for a skill and cache them in Firestore with role context"""
         api_key = os.environ.get('YOUTUBE_API_KEY')
         if not api_key:
             logger.warning("YOUTUBE_API_KEY not found in environment. Skipping YouTube fetch.")
@@ -108,8 +112,11 @@ class LearningService:
             
             youtube = build('youtube', 'v3', developerKey=api_key)
             
-            # Search query
-            query = f"{skill_name} tutorial beginner course"
+            # Search query including the target role context if available
+            if role_title:
+                query = f"{skill_name} for {role_title} tutorial beginner course"
+            else:
+                query = f"{skill_name} tutorial beginner course"
             
             logger.info(f"Fetching fresh YouTube videos for query: {query}")
             search_request = youtube.search().list(
@@ -134,12 +141,14 @@ class LearningService:
                 title = snippet.get('title', 'YouTube Tutorial')
                 channel_title = snippet.get('channelTitle', 'YouTube')
                 
-                # Check if it's already in resources to avoid duplicate writes
-                resource_id = f"yt_{video_id}"
+                # Make the ID unique to the role so we cache separate links per role
+                resource_id = f"yt_{role_id}_{video_id}" if role_id else f"yt_{video_id}"
                 
                 video_resource = {
                     'id': resource_id,
                     'skillId': skill_id,
+                    'roleId': role_id,
+                    'roleTitle': role_title,
                     'title': title,
                     'url': f"https://www.youtube.com/watch?v={video_id}",
                     'type': 'video',
@@ -160,35 +169,47 @@ class LearningService:
             logger.error(f"Error fetching/caching YouTube videos for {skill_id}: {str(e)}")
             return []
 
-    def generate_and_cache_documentation_resources(self, skill_id: str) -> List[Dict]:
-        """Generate official/fallback documentation resources for a skill and cache them in Firestore"""
+    def generate_and_cache_documentation_resources(self, skill_id: str, role_title: str = None, role_id: str = None) -> List[Dict]:
+        """Generate official/fallback documentation resources for a skill and cache them in Firestore with role context"""
         try:
             # Look up in mapping
             mapped_docs = OFFICIAL_DOCS_MAPPING.get(skill_id.lower())
             
+            friendly_name = skill_id.replace('-', ' ').replace('_', ' ').title()
+            
+            # If we have role context, create a customized doc entry to add to it
+            role_custom_docs = []
+            if role_title:
+                role_custom_docs = [
+                    {
+                        'title': f'{friendly_name} Guide for {role_title}',
+                        'url': f'https://www.google.com/search?q={friendly_name}+for+{role_title.replace(" ", "+")}+official+documentation',
+                        'provider': f'{role_title} Reference'
+                    }
+                ]
+            
             if not mapped_docs:
                 # Fallback generator for unknown skill
-                friendly_name = skill_id.replace('-', ' ').replace('_', ' ').title()
                 mapped_docs = [
                     {
                         'title': f'{friendly_name} Developer Documentation',
                         'url': f'https://devdocs.io/{skill_id.lower()}/',
                         'provider': 'DevDocs'
-                    },
-                    {
-                        'title': f'Google Search: {friendly_name} Docs',
-                        'url': f'https://www.google.com/search?q={friendly_name}+official+documentation',
-                        'provider': 'Google Search'
                     }
                 ]
                 
+            # Combine role-specific docs first, then general official docs
+            all_docs = role_custom_docs + mapped_docs
+                
             new_resources = []
-            for i, doc in enumerate(mapped_docs):
-                resource_id = f"doc_{skill_id}_{i+1}"
+            for i, doc in enumerate(all_docs):
+                resource_id = f"doc_{role_id}_{skill_id}_{i+1}" if role_id else f"doc_{skill_id}_{i+1}"
                 
                 doc_resource = {
                     'id': resource_id,
                     'skillId': skill_id,
+                    'roleId': role_id,
+                    'roleTitle': role_title,
                     'title': doc['title'],
                     'url': doc['url'],
                     'type': 'documentation',

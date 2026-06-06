@@ -51,6 +51,9 @@ class ModuleService:
                 # Save initial modules to DB and update state cache
                 self._update_roadmap_in_db(uid, roadmap_id, active_roadmap, roadmap_modules)
             
+            role_id = active_roadmap.get('roleId')
+            role_title = active_roadmap.get('roleTitle', role_id)
+            
             # Format and enrich modules with skills and learning resources for the frontend
             enriched_modules = []
             for i, module_meta in enumerate(roadmap_modules):
@@ -61,7 +64,11 @@ class ModuleService:
                 module_skills = []
                 for skill in milestone.get('skills', []):
                     skill_id = skill['skillId']
-                    resources = self.learning_service.get_learning_resources(skill_id)
+                    resources = self.learning_service.get_learning_resources(
+                        skill_id, 
+                        role_title=role_title, 
+                        role_id=role_id
+                    )
                     
                     formatted_resources = []
                     for res in resources:
