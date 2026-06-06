@@ -7,3 +7,4 @@ venv/
 __pycache__/
 seed_*.py
 *.conf
+delete_user_by_email.py
