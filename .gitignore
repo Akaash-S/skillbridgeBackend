@@ -8,3 +8,4 @@ __pycache__/
 seed_*.py
 *.conf
 delete_user_by_email.py
+list_user_data.py
