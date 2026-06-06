@@ -321,3 +321,17 @@ class LearningService:
             'advanced': None  # No next level
         }
         return level_progression.get(current_level)
+
+    def set_learning_mode(self, uid: str, learning_mode: str) -> bool:
+        """Set user's learning preference mode"""
+        try:
+            # Save to users collection
+            success = self.db_service.update_document('users', uid, {'learningMode': learning_mode}, create_if_missing=True)
+            if success:
+                # Also sync to user_state collection to easily load on initial load
+                self.db_service.update_document('user_state', uid, {'learningMode': learning_mode}, create_if_missing=True)
+                logger.info(f"Successfully set learning mode '{learning_mode}' for user {uid}")
+            return success
+        except Exception as e:
+            logger.error(f"Error setting learning mode: {str(e)}")
+            return False
