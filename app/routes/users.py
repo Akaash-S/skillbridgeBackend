@@ -342,3 +342,169 @@ def get_user_stats():
             'error': 'Failed to get user statistics',
             'code': 'GET_STATS_ERROR'
         }), 500
+
+@users_bp.route('/public/<uid>', methods=['GET'])
+def get_public_profile(uid):
+    """Get public profile info for sharing (unauthenticated)"""
+    try:
+        user_profile = db_service.get_document('users', uid)
+        if not user_profile:
+            # Check if it's the dev user and we have dev mock data
+            if uid == 'dev-user-123':
+                user_profile = {
+                    'name': 'Alex Mercer',
+                    'avatar': 'avatar_2',
+                    'interests': ['React', 'TypeScript', 'Node.js', 'System Design'],
+                    'weeklyGoal': 15,
+                    'careerGoal': 'Full Stack Engineer'
+                }
+            else:
+                return jsonify({
+                    'error': 'User profile not found',
+                    'code': 'USER_NOT_FOUND'
+                }), 404
+        
+        # Get user state
+        from app.services.user_state_manager import UserStateManager
+        state_manager = UserStateManager()
+        user_state = state_manager.get_user_state(uid) or {}
+        
+        # Get target role
+        target_role = user_state.get('targetRole')
+        if not target_role and uid == 'dev-user-123':
+            target_role = {
+                'id': 'full-stack-dev',
+                'title': 'Full Stack Developer',
+                'category': 'Software Engineering',
+                'description': 'Builds frontend and backend systems.'
+            }
+        
+        # Get user skills
+        user_skills = db_service.get_user_skills(uid)
+        
+        # Calculate skills count and level metrics
+        skills_count = len(user_skills)
+        if skills_count == 0 and uid == 'dev-user-123':
+            skills_count = 5
+            
+        skills_by_level = {'beginner': 0, 'intermediate': 0, 'advanced': 0}
+        for skill in user_skills:
+            level = skill.get('level', 'beginner')
+            if level in skills_by_level:
+                skills_by_level[level] += 1
+        
+        # Calculate readiness score
+        analysis = user_state.get('analysis') or {}
+        readiness_score = 0
+        if analysis and 'readinessScore' in analysis:
+            readiness_score = analysis['readinessScore']
+        elif target_role:
+            summary = state_manager._calculate_skill_gap_summary(user_skills, target_role)
+            if summary:
+                readiness_score = summary.get('readinessScore', 0)
+        
+        if readiness_score == 0 and uid == 'dev-user-123':
+            readiness_score = 75.0
+            
+        # Get roadmap / milestone progress
+        roadmap = db_service.get_user_roadmap(uid)
+        roadmap_progress = 0
+        total_milestones = 0
+        completed_milestones = 0
+        
+        if roadmap and 'milestones' in roadmap:
+            total_milestones = len(roadmap['milestones'])
+            for milestone in roadmap['milestones']:
+                if milestone.get('completed', False):
+                    completed_milestones += 1
+            if total_milestones > 0:
+                roadmap_progress = round((completed_milestones / total_milestones) * 100, 1)
+        else:
+            roadmap_progress_state = user_state.get('roadmapProgress') or {}
+            total_milestones = roadmap_progress_state.get('totalItems', 0)
+            completed_milestones = roadmap_progress_state.get('completedItems', 0)
+            if total_milestones > 0:
+                roadmap_progress = round((completed_milestones / total_milestones) * 100, 1)
+                
+        if total_milestones == 0 and uid == 'dev-user-123':
+            total_milestones = 6
+            completed_milestones = 4
+            roadmap_progress = 66.7
+            
+        # Get gamification data
+        from app.services.streak_service import StreakService
+        from app.services.xp_service import XPService
+        from app.services.achievement_service import AchievementService
+        
+        streak_service = StreakService()
+        xp_service = XPService()
+        achievement_service = AchievementService()
+        
+        streak_data = streak_service.get_streak(uid)
+        xp_data = xp_service.get_xp(uid)
+        achievements = achievement_service.get_achievements(uid)
+        
+        unlocked_count = sum(1 for a in achievements if a.get('unlocked', False))
+        total_achievements = len(achievements)
+        
+        # Fallback values for mock/dev environment
+        if xp_data.get('totalXP', 0) == 0 and uid == 'dev-user-123':
+            xp_data = {
+                'totalXP': 1250,
+                'level': 4,
+                'levelTitle': 'Practitioner',
+                'levelInfo': {
+                    'level': 4,
+                    'title': 'Practitioner',
+                    'nextLevel': 5,
+                    'nextTitle': 'Specialist',
+                    'nextLevelXP': 2500,
+                    'currentLevelXP': 1200,
+                    'progressToNext': 4.2
+                },
+                'modulesCompleted': 8,
+                'quizzesCompleted': 12,
+                'roadmapsCompleted': 1
+            }
+            streak_data = {
+                'currentStreak': 5,
+                'bestStreak': 12,
+                'lastActivityDate': datetime.utcnow().strftime('%Y-%m-%d')
+            }
+            unlocked_count = 4
+            total_achievements = 11
+            
+        public_data = {
+            'profile': {
+                'name': user_profile.get('name', 'Learner'),
+                'avatar': user_profile.get('avatar', 'avatar_1'),
+                'targetRole': target_role.get('title') if target_role else user_profile.get('careerGoal', 'Not set'),
+                'interests': user_profile.get('interests', []),
+                'weeklyGoal': user_profile.get('weeklyGoal', 10)
+            },
+            'stats': {
+                'skillsCount': skills_count,
+                'skillsByLevel': skills_by_level,
+                'readinessScore': readiness_score,
+                'totalMilestones': total_milestones,
+                'completedMilestones': completed_milestones,
+                'roadmapProgress': roadmap_progress
+            },
+            'gamification': {
+                'streak': streak_data,
+                'xp': xp_data,
+                'achievements': {
+                    'unlocked': unlocked_count,
+                    'total': total_achievements
+                }
+            }
+        }
+        
+        return jsonify(public_data), 200
+        
+    except Exception as e:
+        logger.error(f"Get public profile error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to get public profile data',
+            'code': 'GET_PUBLIC_PROFILE_ERROR'
+        }), 500
