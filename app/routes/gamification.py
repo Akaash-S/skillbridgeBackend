@@ -101,3 +101,61 @@ def get_motivation_dashboard():
     except Exception as e:
         logger.error(f"Get motivation dashboard error: {str(e)}")
         return jsonify({'error': 'Failed to get dashboard data', 'code': 'GET_DASHBOARD_ERROR'}), 500
+
+@gamification_bp.route('/sync-legacy', methods=['POST'])
+@auth_required
+def sync_legacy_progress():
+    """Sync legacy roadmap progress into gamification."""
+    try:
+        uid = request.current_user['uid']
+        
+        # Check if already synced
+        doc = xp_service._get_gamification_doc(uid)
+        if doc.get('legacySynced', False):
+            return jsonify({'message': 'Already synced', 'synced': True}), 200
+
+        from app.services.module_service import ModuleService
+        module_service = ModuleService()
+        modules = module_service.get_or_initialize_modules(uid)
+
+        completed_modules = sum(1 for m in modules if m.get('completed', False))
+        passed_quizzes = sum(1 for m in modules if m.get('quizPassed', False))
+
+        if completed_modules == 0 and passed_quizzes == 0:
+            # Nothing to sync, but mark as synced
+            xp_service.db.update_document(
+                'users', f"{uid}/gamification/data", 
+                {'legacySynced': True}, create_if_missing=True
+            )
+            return jsonify({'message': 'No legacy progress to sync', 'synced': True}), 200
+
+        # Calculate XP
+        from app.services.xp_service import XP_REWARDS
+        xp_to_add = (completed_modules * XP_REWARDS.get('module_completed', 50)) + \
+                    (passed_quizzes * XP_REWARDS.get('quiz_passed', 75))
+
+        result = xp_service.award_xp(uid, 'legacy_sync', xp_to_add)
+
+        # Update the completed modules and quizzes count so the user sees them
+        xp_service.db.update_document(
+            'users', f"{uid}/gamification/data", 
+            {
+                'modulesCompleted': doc.get('modulesCompleted', 0) + completed_modules,
+                'quizzesCompleted': doc.get('quizzesCompleted', 0) + passed_quizzes,
+                'legacySynced': True
+            }, 
+            create_if_missing=True
+        )
+
+        # Give them at least a 1 day streak
+        streak_service.record_activity(uid, 'legacy_sync')
+
+        # Trigger achievement check
+        achievement_service.check_achievements(uid)
+
+        return jsonify({'message': 'Legacy progress synced successfully', 'synced': True, 'xpAdded': xp_to_add}), 200
+
+    except Exception as e:
+        logger.error(f"Sync legacy progress error: {str(e)}")
+        return jsonify({'error': 'Failed to sync legacy progress', 'code': 'SYNC_LEGACY_ERROR'}), 500
+

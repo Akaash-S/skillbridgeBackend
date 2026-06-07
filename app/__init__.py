@@ -128,5 +128,24 @@ def create_app():
                 'disabled': os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes')
             }
         }, 200
+        
+    # Start the automated backup scheduler
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.services.backup_service import BackupService
+        
+        # We only want to start the scheduler if we are not in testing/generation mode
+        if not app.testing and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+            scheduler = BackgroundScheduler()
+            backup_service = BackupService()
+            
+            # Schedule for 10:00 AM daily
+            scheduler.add_job(func=backup_service.perform_backup, trigger="cron", hour=10, minute=0)
+            scheduler.start()
+            logger.info("⏰ Automated backup scheduler started for 10:00 AM daily.")
+    except ImportError:
+        logger.warning("⚠️ APScheduler not installed. Automated backups will not run. Please `pip install APScheduler`.")
+    except Exception as e:
+        logger.error(f"❌ Failed to start automated backup scheduler: {str(e)}")
     
     return app
