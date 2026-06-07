@@ -3,6 +3,7 @@ from app.middleware.auth_required import auth_required
 from app.db.firestore import FirestoreService
 from app.services.mfa_service import mfa_service
 from datetime import datetime
+from app import limiter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ mfa_bp = Blueprint('mfa', __name__)
 db_service = FirestoreService()
 
 @mfa_bp.route('/setup', methods=['POST'])
+@limiter.limit("5 per minute")
 @auth_required
 def setup_mfa():
     """
@@ -83,6 +85,7 @@ def setup_mfa():
         }), 500
 
 @mfa_bp.route('/verify-setup', methods=['POST'])
+@limiter.limit("5 per minute")
 def verify_mfa_setup():
     """
     Verify MFA setup with TOTP code
@@ -154,6 +157,7 @@ def verify_mfa_setup():
         }), 500
 
 @mfa_bp.route('/verify', methods=['POST'])
+@limiter.limit("5 per minute")
 def verify_mfa():
     """
     Verify MFA code during login
@@ -240,6 +244,7 @@ def verify_mfa():
         }), 500
 
 @mfa_bp.route('/status', methods=['GET'])
+@limiter.limit("20 per minute")
 @auth_required
 def get_mfa_status():
     """
@@ -275,6 +280,7 @@ def get_mfa_status():
         }), 500
 
 @mfa_bp.route('/disable', methods=['POST'])
+@limiter.limit("5 per minute")
 @auth_required
 def disable_mfa():
     """
@@ -352,6 +358,7 @@ def disable_mfa():
         }), 500
 
 @mfa_bp.route('/regenerate-recovery-codes', methods=['POST'])
+@limiter.limit("5 per minute")
 @auth_required
 def regenerate_recovery_codes():
     """

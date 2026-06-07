@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Initialize Limiter - Global Instance
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["100 per minute"],
+    default_limits=["2000 per day", "500 per hour", "100 per minute"],
     storage_uri="memory://",
     strategy="fixed-window",
     headers_enabled=True # Send rate limit headers to frontend
