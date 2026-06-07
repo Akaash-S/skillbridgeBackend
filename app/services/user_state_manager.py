@@ -301,6 +301,8 @@ class UserStateManager:
                     'totalItems': len(roadmap_items),
                     'completedItems': sum(1 for item in roadmap_items if item.get('completed')),
                     'progress': active_roadmap.get('progress', {}).get('skillProgress', 0),
+                    'moduleProgress': active_roadmap.get('progress', {}).get('moduleProgress', 0),
+                    'quizProgress': active_roadmap.get('progress', {}).get('quizProgress', 0),
                     'roadmapItems': roadmap_items,
                     'lastUpdated': active_roadmap.get('lastUpdated', datetime.utcnow())
                 }

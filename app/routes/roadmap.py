@@ -117,15 +117,21 @@ def get_roadmap():
         skill_progress = (completed_skills / total_skills * 100) if total_skills > 0 else 0
         milestone_progress = (completed_milestones / total_milestones * 100) if total_milestones > 0 else 0
         
+        existing_progress = roadmap.get('progress', {}) if isinstance(roadmap.get('progress'), dict) else {}
         roadmap_with_stats = {
             **roadmap,
             'progress': {
                 'skillProgress': round(skill_progress, 1),
                 'milestoneProgress': round(milestone_progress, 1),
+                'moduleProgress': existing_progress.get('moduleProgress', 0),
+                'quizProgress': existing_progress.get('quizProgress', 0),
                 'totalSkills': total_skills,
                 'completedSkills': completed_skills,
                 'totalMilestones': total_milestones,
-                'completedMilestones': completed_milestones
+                'completedMilestones': completed_milestones,
+                'totalModules': existing_progress.get('totalModules', 0),
+                'completedModules': existing_progress.get('completedModules', 0),
+                'passedQuizzes': existing_progress.get('passedQuizzes', 0)
             }
         }
         
