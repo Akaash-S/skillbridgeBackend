@@ -4,6 +4,9 @@ from app.middleware.auth_required import auth_required
 from app.services.learning_service import LearningService
 from app.services.module_service import ModuleService
 from app.services.quiz_service import QuizService
+from app.services.streak_service import StreakService
+from app.services.xp_service import XPService
+from app.services.achievement_service import AchievementService
 from app.utils.validators import validate_required_fields
 
 logger = logging.getLogger(__name__)
@@ -12,6 +15,9 @@ learning_journey_bp = Blueprint('learning_journey', __name__)
 learning_service = LearningService()
 module_service = ModuleService()
 quiz_service = QuizService()
+streak_service = StreakService()
+xp_service = XPService()
+achievement_service = AchievementService()
 
 @learning_journey_bp.route('/learning-mode', methods=['POST'])
 @auth_required
@@ -104,10 +110,26 @@ def complete_module():
                 'error': 'Failed to complete module',
                 'code': 'COMPLETE_FAILED'
             }), 500
+        
+        # --- Gamification hooks ---
+        try:
+            streak_data = streak_service.record_activity(uid, 'module')
+            xp_data = xp_service.award_xp(uid, 'module_completed')
+            new_achievements = achievement_service.check_achievements(uid)
+        except Exception as gam_err:
+            logger.warning(f"Gamification hook error (non-blocking): {gam_err}")
+            streak_data = {}
+            xp_data = {}
+            new_achievements = []
             
         return jsonify({
             'message': 'Module marked as completed successfully',
-            'moduleIndex': module_index
+            'moduleIndex': module_index,
+            'gamification': {
+                'streak': streak_data,
+                'xp': xp_data,
+                'newAchievements': new_achievements
+            }
         }), 200
     except Exception as e:
         logger.error(f"Complete module error: {str(e)}")
@@ -209,6 +231,26 @@ def submit_module_quiz():
         # If passed, update module status to quizPassed = True and unlock next module
         if result.get('passed', False):
             module_service.pass_module_quiz(uid, module_index)
+            
+            # --- Gamification hooks ---
+            try:
+                streak_data = streak_service.record_activity(uid, 'quiz')
+                xp_data = xp_service.award_xp(uid, 'quiz_passed')
+                
+                # Check for perfect score
+                score = result.get('score', 0)
+                total = result.get('total', 1)
+                if score == total and total > 0:
+                    xp_service.record_perfect_quiz(uid)
+                
+                new_achievements = achievement_service.check_achievements(uid)
+                result['gamification'] = {
+                    'streak': streak_data,
+                    'xp': xp_data,
+                    'newAchievements': new_achievements
+                }
+            except Exception as gam_err:
+                logger.warning(f"Gamification hook error (non-blocking): {gam_err}")
             
         return jsonify(result), 200
         

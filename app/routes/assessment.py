@@ -1,12 +1,18 @@
 from flask import Blueprint, request, jsonify
 from app.middleware.auth_required import auth_required
 from app.services.assessment_service import AssessmentService
+from app.services.streak_service import StreakService
+from app.services.xp_service import XPService
+from app.services.achievement_service import AchievementService
 from app import limiter
 import logging
 
 logger = logging.getLogger(__name__)
 assessment_bp = Blueprint('assessment', __name__)
 assessment_service = AssessmentService()
+streak_service = StreakService()
+xp_service = XPService()
+achievement_service = AchievementService()
 
 @assessment_bp.route('/eligibility/<role_id>', methods=['GET'])
 @auth_required
@@ -80,6 +86,22 @@ def submit_assessment():
         return jsonify({'error': 'sessionId and answers are required'}), 400
         
     result = assessment_service.submit_assessment(session_id, answers)
+    
+    # --- Gamification hooks (only if passed) ---
+    if result.get('passed', False):
+        try:
+            uid = request.current_user['uid']
+            streak_data = streak_service.record_activity(uid, 'assessment')
+            xp_data = xp_service.award_xp(uid, 'assessment_passed')
+            new_achievements = achievement_service.check_achievements(uid)
+            result['gamification'] = {
+                'streak': streak_data,
+                'xp': xp_data,
+                'newAchievements': new_achievements
+            }
+        except Exception as gam_err:
+            logger.warning(f"Gamification hook error (non-blocking): {gam_err}")
+    
     return jsonify(result)
 
 @assessment_bp.route('/seed-quiz', methods=['POST'])
