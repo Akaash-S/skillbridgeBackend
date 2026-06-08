@@ -162,20 +162,38 @@ cat > /opt/skillbridge/backup.sh << 'EOF'
 # SkillBridge Backup Script
 
 BACKUP_DIR="/opt/skillbridge/backups"
+LOG_FILE="/opt/skillbridge/logs/backup.log"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="skillbridge_backup_$DATE.tar.gz"
 
-# Create backup
-tar -czf "$BACKUP_DIR/$BACKUP_FILE" \
+mkdir -p "$BACKUP_DIR"
+mkdir -p "/opt/skillbridge/logs"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting automated backup..." >> "$LOG_FILE"
+
+# Create backup and capture stderr
+ERROR_OUTPUT=$(tar -czf "$BACKUP_DIR/$BACKUP_FILE" \
     --exclude="$BACKUP_DIR" \
     --exclude="/opt/skillbridge/logs" \
-    /opt/skillbridge/
+    /opt/skillbridge/ 2>&1)
 
-# Keep only last 7 backups
-cd "$BACKUP_DIR"
-ls -t skillbridge_backup_*.tar.gz | tail -n +8 | xargs -r rm
+TAR_STATUS=$?
 
-echo "Backup created: $BACKUP_FILE"
+if [ $TAR_STATUS -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup created successfully: $BACKUP_FILE" >> "$LOG_FILE"
+    
+    # Keep only last 7 backups
+    cd "$BACKUP_DIR"
+    ls -t skillbridge_backup_*.tar.gz | tail -n +8 | xargs -r rm >> "$LOG_FILE" 2>&1
+    
+    # Send success email
+    /usr/bin/python3 /opt/skillbridge/backend/scripts/send_backup_email.py --status success --file "$BACKUP_FILE" >> "$LOG_FILE" 2>&1
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup failed with status $TAR_STATUS. Error: $ERROR_OUTPUT" >> "$LOG_FILE"
+    
+    # Send failure email
+    /usr/bin/python3 /opt/skillbridge/backend/scripts/send_backup_email.py --status failed --error "tar failed with exit code $TAR_STATUS. Stderr: $ERROR_OUTPUT" >> "$LOG_FILE" 2>&1
+fi
 EOF
 
 chmod +x /opt/skillbridge/backup.sh
@@ -183,7 +201,11 @@ chown skillbridge:skillbridge /opt/skillbridge/backup.sh
 
 # Add backup to crontab
 print_info "Setting up automated backups..."
-(crontab -u skillbridge -l 2>/dev/null; echo "0 2 * * * /opt/skillbridge/backup.sh") | crontab -u skillbridge -
+CRON_TEMP=$(mktemp)
+crontab -u skillbridge -l 2>/dev/null | grep -v -F "/opt/skillbridge/backup.sh" > "$CRON_TEMP" || true
+echo "0 10 * * * /opt/skillbridge/backup.sh" >> "$CRON_TEMP"
+crontab -u skillbridge "$CRON_TEMP"
+rm "$CRON_TEMP"
 
 # Configure Nginx as reverse proxy
 print_info "Configuring Nginx..."
@@ -319,7 +341,11 @@ chmod +x /opt/skillbridge/monitor.sh
 chown skillbridge:skillbridge /opt/skillbridge/monitor.sh
 
 # Add monitoring to crontab (every 5 minutes)
-(crontab -u skillbridge -l 2>/dev/null; echo "*/5 * * * * /opt/skillbridge/monitor.sh") | crontab -u skillbridge -
+CRON_TEMP=$(mktemp)
+crontab -u skillbridge -l 2>/dev/null | grep -v -F "/opt/skillbridge/monitor.sh" > "$CRON_TEMP" || true
+echo "*/5 * * * * /opt/skillbridge/monitor.sh" >> "$CRON_TEMP"
+crontab -u skillbridge "$CRON_TEMP"
+rm "$CRON_TEMP"
 
 # Create deployment script for the application
 print_info "Creating deployment script..."
