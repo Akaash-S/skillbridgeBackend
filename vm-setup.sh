@@ -298,6 +298,12 @@ server {
 }
 EOF
 
+# If rate limiting zones are already defined elsewhere, remove them from this config to prevent duplicates
+if grep -r "limit_req_zone.*zone=api" /etc/nginx/nginx.conf /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | grep -v -E "sites-enabled/skillbridge|sites-available/skillbridge" | grep -q "limit_req_zone"; then
+    print_warning "Rate limiting zones already defined in another config. Removing duplicates from fallback config..."
+    sed -i '/limit_req_zone/d' /etc/nginx/sites-available/skillbridge
+fi
+
 # Enable the site
 ln -sf /etc/nginx/sites-available/skillbridge /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
