@@ -221,6 +221,10 @@ rm "$CRON_TEMP"
 # Configure Nginx as reverse proxy
 print_info "Configuring Nginx..."
 cat > /etc/nginx/sites-available/skillbridge << 'EOF'
+# Rate limiting zones (must be in http context)
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+
 server {
     listen 80;
     server_name _;
@@ -230,10 +234,6 @@ server {
     add_header X-Content-Type-Options nosniff always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
     
     # Gzip compression
     gzip on;
