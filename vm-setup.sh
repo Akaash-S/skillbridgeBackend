@@ -299,8 +299,8 @@ server {
 EOF
 
 # If rate limiting zones are already defined elsewhere, remove them from this config to prevent duplicates
-# We use -H on grep to ensure the filename is always printed, and search files directly to follow symlinks.
-if grep -s -H "limit_req_zone.*zone=api" /etc/nginx/nginx.conf /etc/nginx/sites-enabled/* /etc/nginx/conf.d/* 2>/dev/null | grep -v -E "sites-enabled/skillbridge|sites-available/skillbridge" | grep -q "limit_req_zone"; then
+# We use grep -R (capital R) to recursively search /etc/nginx/ and follow all symlinks.
+if grep -R "zone=api" /etc/nginx/ 2>/dev/null | grep -v -E "sites-enabled/skillbridge|sites-available/skillbridge" | grep -q "zone=api"; then
     print_warning "Rate limiting zones already defined in another config. Removing duplicates from fallback config..."
     sed -i '/limit_req_zone/d' /etc/nginx/sites-available/skillbridge
 fi
