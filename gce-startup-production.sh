@@ -58,9 +58,28 @@ ufw --force enable
 
 # 6. Nginx Configuration
 echo "🌐 Configuring Nginx Reverse Proxy..."
-cat > /etc/nginx/sites-available/skillbridge << 'EOF'
-limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+mkdir -p /etc/nginx/conf.d
 
+# Write global shared rate limiting configuration (in http context)
+echo "Creating global rate limiting zones in /etc/nginx/conf.d/rate_limits.conf..."
+cat > /etc/nginx/conf.d/rate_limits.conf << 'EOF'
+# SkillBridge Rate Limiting Zones (Shared globally in http block)
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+EOF
+
+# Clean up any duplicate definitions from main nginx.conf and sites-available
+echo "Cleaning up duplicate rate limiting zones..."
+if [ -f /etc/nginx/nginx.conf ]; then
+    sed -i '/limit_req_zone/d' /etc/nginx/nginx.conf
+fi
+for f in /etc/nginx/sites-available/*; do
+    if [ -f "$f" ]; then
+        sed -i '/limit_req_zone/d' "$f"
+    fi
+done
+
+cat > /etc/nginx/sites-available/skillbridge << 'EOF'
 server {
     listen 80;
     server_name _; # Will be updated if domain is provided
@@ -98,7 +117,17 @@ EOF
 
 ln -sf /etc/nginx/sites-available/skillbridge /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
-systemctl restart nginx
+
+# Test Nginx configuration
+echo "Testing Nginx configuration..."
+if nginx -t; then
+    echo "Nginx configuration is valid."
+    systemctl enable nginx
+    systemctl restart nginx
+else
+    echo "Nginx configuration test failed!"
+    exit 1
+fi
 
 # 7. Application Deployment (Initial)
 # Note: The actual code pull/deployment is often handled by the local script 

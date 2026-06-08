@@ -220,11 +220,35 @@ rm "$CRON_TEMP"
 
 # Configure Nginx as reverse proxy
 print_info "Configuring Nginx..."
-cat > /etc/nginx/sites-available/skillbridge << 'EOF'
-# Rate limiting zones (must be in http context)
+
+# Ensure conf.d directory exists
+mkdir -p /etc/nginx/conf.d
+
+# Write global shared rate limiting configuration (in http context)
+print_info "Creating global rate limiting zones in /etc/nginx/conf.d/rate_limits.conf..."
+cat > /etc/nginx/conf.d/rate_limits.conf << 'EOF'
+# SkillBridge Rate Limiting Zones (Shared globally in http block)
 limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+EOF
 
+# Clean up any duplicate definitions from main nginx.conf and sites-available
+print_info "Cleaning up duplicate rate limiting zones from configuration files..."
+if [ -f /etc/nginx/nginx.conf ]; then
+    # Backup nginx.conf before making edits
+    cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup.$(date +%Y%m%d_%H%M%S)
+    sed -i '/limit_req_zone/d' /etc/nginx/nginx.conf
+fi
+
+# Strip limit_req_zone declarations from all site files to ensure global once-only definition
+for f in /etc/nginx/sites-available/*; do
+    if [ -f "$f" ]; then
+        sed -i '/limit_req_zone/d' "$f"
+    fi
+done
+
+# Write the fallback site configuration (WITHOUT rate limiting zones)
+cat > /etc/nginx/sites-available/skillbridge << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -298,23 +322,22 @@ server {
 }
 EOF
 
-# If rate limiting zones are already defined elsewhere, remove them from this config to prevent duplicates
-# We use grep -R (capital R) to recursively search /etc/nginx/ and follow all symlinks.
-if grep -R "zone=api" /etc/nginx/ 2>/dev/null | grep -v -E "sites-enabled/skillbridge|sites-available/skillbridge" | grep -q "zone=api"; then
-    print_warning "Rate limiting zones already defined in another config. Removing duplicates from fallback config..."
-    sed -i '/limit_req_zone/d' /etc/nginx/sites-available/skillbridge
-fi
-
 # Enable the site
 ln -sf /etc/nginx/sites-available/skillbridge /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 # Test Nginx configuration
-nginx -t
-
-# Start and enable Nginx
-systemctl start nginx
-systemctl enable nginx
+print_info "Testing Nginx configuration..."
+if nginx -t; then
+    print_success "Nginx configuration is valid."
+    # Start and enable Nginx
+    systemctl start nginx
+    systemctl enable nginx
+    systemctl reload nginx || true
+else
+    print_error "Nginx configuration test failed! Please check logs."
+    exit 1
+fi
 
 # Create monitoring script
 print_info "Creating monitoring script..."

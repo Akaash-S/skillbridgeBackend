@@ -35,23 +35,30 @@ if [ "$EUID" -ne 0 ]; then
     echo "Or run individual commands with sudo"
 fi
 
-# Step 1: Add rate limiting zones to main nginx.conf
-print_status "Adding rate limiting zones to main nginx.conf..."
+# Step 1: Configure global rate limiting zones
+print_status "Configuring global rate limiting zones..."
+sudo mkdir -p /etc/nginx/conf.d
 
-# Check if rate limiting zones already exist
-if ! grep -q "limit_req_zone.*zone=api" /etc/nginx/nginx.conf; then
-    print_status "Adding rate limiting zones to /etc/nginx/nginx.conf..."
-    
-    # Create a backup
+# Write global shared rate limiting configuration (in http context)
+sudo tee /etc/nginx/conf.d/rate_limits.conf > /dev/null << 'EOF'
+# SkillBridge Rate Limiting Zones (Shared globally in http block)
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+EOF
+
+# Clean up any duplicate definitions from main nginx.conf and sites-available
+print_status "Cleaning up duplicate rate limiting zones from configuration files..."
+if [ -f /etc/nginx/nginx.conf ]; then
+    # Backup nginx.conf
     sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup.$(date +%Y%m%d_%H%M%S)
-    
-    # Add rate limiting zones to http block
-    sudo sed -i '/http {/a\\n\t# Rate limiting zones for SkillBridge\n\tlimit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;\n\tlimit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;\n' /etc/nginx/nginx.conf
-    
-    print_success "Rate limiting zones added to main nginx.conf"
-else
-    print_success "Rate limiting zones already exist in nginx.conf"
+    sudo sed -i '/limit_req_zone/d' /etc/nginx/nginx.conf
 fi
+
+for f in /etc/nginx/sites-available/*; do
+    if [ -f "$f" ]; then
+        sudo sed -i '/limit_req_zone/d' "$f"
+    fi
+done
 
 # Step 2: Remove existing site configuration if it exists
 print_status "Removing existing site configuration..."
@@ -64,7 +71,7 @@ sudo cp skillbridge-server-site.conf /etc/nginx/sites-available/skillbridge-serv
 
 # Step 4: Enable the site
 print_status "Enabling the site..."
-sudo ln -s /etc/nginx/sites-available/skillbridge-server.asolvitra.tech /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/skillbridge-server.asolvitra.tech /etc/nginx/sites-enabled/
 
 # Step 5: Remove default site if it exists
 print_status "Removing default site..."

@@ -60,11 +60,30 @@ if ! grep -q "sites-enabled" /etc/nginx/nginx.conf; then
     sudo sed -i '/http {/a\\n\t# Include site configurations\n\tinclude /etc/nginx/sites-enabled/*;\n' /etc/nginx/nginx.conf
 fi
 
-# Step 6: Add rate limiting zones if they don't exist
-if ! grep -q "limit_req_zone.*zone=api" /etc/nginx/nginx.conf; then
-    print_status "Adding rate limiting zones..."
-    sudo sed -i '/http {/a\\n\t# Rate limiting zones\n\tlimit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;\n\tlimit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;\n' /etc/nginx/nginx.conf
+# Step 6: Configure global rate limiting zones
+print_status "Configuring global rate limiting zones..."
+sudo mkdir -p /etc/nginx/conf.d
+
+# Write global shared rate limiting configuration (in http context)
+sudo tee /etc/nginx/conf.d/rate_limits.conf > /dev/null << 'EOF'
+# SkillBridge Rate Limiting Zones (Shared globally in http block)
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+EOF
+
+# Clean up any duplicate definitions from main nginx.conf and sites-available
+print_status "Cleaning up duplicate rate limiting zones from configuration files..."
+if [ -f /etc/nginx/nginx.conf ]; then
+    # Backup nginx.conf
+    sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup.$(date +%Y%m%d_%H%M%S)
+    sudo sed -i '/limit_req_zone/d' /etc/nginx/nginx.conf
 fi
+
+for f in /etc/nginx/sites-available/*; do
+    if [ -f "$f" ]; then
+        sudo sed -i '/limit_req_zone/d' "$f"
+    fi
+done
 
 # Step 7: Test nginx configuration
 print_status "Testing nginx configuration..."
