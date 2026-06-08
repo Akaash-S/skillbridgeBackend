@@ -108,7 +108,11 @@ systemctl enable fail2ban
 
 # Create application user
 print_info "Creating application user..."
-useradd -m -s /bin/bash skillbridge
+if ! id -u skillbridge >/dev/null 2>&1; then
+    useradd -m -s /bin/bash skillbridge
+else
+    print_info "User 'skillbridge' already exists, skipping..."
+fi
 usermod -aG docker skillbridge
 
 # Create application directories
