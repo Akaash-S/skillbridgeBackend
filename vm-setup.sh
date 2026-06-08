@@ -203,7 +203,7 @@ chown skillbridge:skillbridge /opt/skillbridge/backup.sh
 print_info "Setting up automated backups..."
 CRON_TEMP=$(mktemp)
 crontab -u skillbridge -l 2>/dev/null | grep -v -F "/opt/skillbridge/backup.sh" > "$CRON_TEMP" || true
-echo "0 10 * * * /opt/skillbridge/backup.sh" >> "$CRON_TEMP"
+echo "0 11 * * * /opt/skillbridge/backup.sh" >> "$CRON_TEMP"
 crontab -u skillbridge "$CRON_TEMP"
 rm "$CRON_TEMP"
 
