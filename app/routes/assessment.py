@@ -104,6 +104,21 @@ def submit_assessment():
     
     return jsonify(result)
 
+@assessment_bp.route('/sessions', methods=['GET'])
+@auth_required
+def get_user_sessions():
+    """Get all assessment sessions for the user"""
+    try:
+        uid = request.current_user['uid']
+        sessions = assessment_service.get_user_sessions(uid)
+        return jsonify(sessions), 200
+    except Exception as e:
+        logger.error(f"Error fetching user sessions: {str(e)}")
+        return jsonify({
+            'error': 'Failed to fetch assessment sessions',
+            'code': 'FETCH_ERROR'
+        }), 500
+
 @assessment_bp.route('/seed-quiz', methods=['POST'])
 @auth_required
 @limiter.limit("1 per minute")

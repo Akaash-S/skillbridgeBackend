@@ -194,6 +194,15 @@ class AssessmentService:
             logger.error(f"Error checking eligibility: {str(e)}")
             return {'eligible': False, 'error': str(e)}
 
+    def get_user_sessions(self, uid: str) -> List[Dict]:
+        """Fetch all assessment sessions for a user"""
+        try:
+            return self.db_service.query_collection(self.collection, [('uid', '==', uid)])
+        except Exception as e:
+            logger.error(f"Error getting sessions for user {uid}: {str(e)}")
+            return []
+
+
     def seed_from_quizapi(self, role_id: str = None) -> Dict:
         """Manually trigger seeding from QuizAPI for one or all roles"""
         roles = [role_id] if role_id else ['frontend-dev', 'backend-dev', 'fullstack-dev', 'data-scientist', 'devops-engineer', 'cloud-architect']
