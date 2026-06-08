@@ -38,6 +38,8 @@ print_info "Setting up SkillBridge Backend on Google Compute Engine VM..."
 
 # Update system packages
 print_info "Updating system packages..."
+# Remove outdated Google Cloud SDK list if present to avoid signature errors during initial update
+rm -f /etc/apt/sources.list.d/google-cloud-sdk.list
 apt-get update -y
 apt-get upgrade -y
 
