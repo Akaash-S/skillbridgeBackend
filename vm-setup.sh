@@ -59,7 +59,12 @@ apt-get install -y \
     fail2ban \
     htop \
     nano \
-    vim
+    vim \
+    cron
+
+# Start and enable Cron
+systemctl start cron
+systemctl enable cron
 
 # Install Docker
 print_info "Installing Docker..."
