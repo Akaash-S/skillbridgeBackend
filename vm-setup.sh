@@ -38,6 +38,10 @@ print_info "Setting up SkillBridge Backend on Google Compute Engine VM..."
 
 # Update system packages
 print_info "Updating system packages..."
+# Set system timezone to Asia/Kolkata (IST)
+print_info "Configuring system timezone to Asia/Kolkata..."
+timedatectl set-timezone Asia/Kolkata || ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime
+
 # Remove outdated Google Cloud SDK list if present to avoid signature errors during initial update
 rm -f /etc/apt/sources.list.d/google-cloud-sdk.list
 apt-get update -y

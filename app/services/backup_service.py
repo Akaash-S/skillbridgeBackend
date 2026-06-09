@@ -20,6 +20,25 @@ BACKUP_COLLECTION = "system_backups"
 MAX_BACKUPS = 10
 CHUNK_SIZE = 800000  # 800KB per chunk to comfortably fit within 1MB Firestore limit
 
+class FirestoreJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle Firestore-specific and non-standard types safely."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, 'isoformat'):
+            return obj.isoformat()
+        # Handle Firestore DocumentReference
+        if hasattr(obj, 'path') and hasattr(obj, 'id'):
+            return {'__type__': 'DocumentReference', 'path': obj.path}
+        # Handle bytes
+        if isinstance(obj, bytes):
+            return base64.b64encode(obj).decode('utf-8')
+        try:
+            return super().default(obj)
+        except TypeError:
+            # Resilient fallback to prevent failure
+            return str(obj)
+
 class BackupService:
     def __init__(self):
         self.db_service = FirestoreService()
@@ -101,7 +120,7 @@ class BackupService:
                     doc_count += 1
 
             # 2. Serialize and Encrypt
-            json_data = json.dumps(backup_data)
+            json_data = json.dumps(backup_data, cls=FirestoreJSONEncoder)
             encrypted_data = self.fernet.encrypt(json_data.encode('utf-8')).decode('utf-8')
             
             # 3. Store in Firestore (chunked)

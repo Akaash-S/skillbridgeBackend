@@ -139,10 +139,10 @@ def create_app():
             scheduler = BackgroundScheduler()
             backup_service = BackupService()
             
-            # Schedule for 10:00 AM daily
-            scheduler.add_job(func=backup_service.perform_backup, trigger="cron", hour=10, minute=0)
+            # Schedule for 11:00 AM daily
+            scheduler.add_job(func=backup_service.perform_backup, trigger="cron", hour=11, minute=0)
             scheduler.start()
-            logger.info("⏰ Automated backup scheduler started for 10:00 AM daily.")
+            logger.info("⏰ Automated backup scheduler started for 11:00 AM daily.")
     except ImportError:
         logger.warning("⚠️ APScheduler not installed. Automated backups will not run. Please `pip install APScheduler`.")
     except Exception as e:
