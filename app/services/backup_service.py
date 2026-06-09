@@ -189,7 +189,119 @@ class BackupService:
             """
             self._send_email("🚨 URGENT: SkillBridge Backup Failed / Server Issue", html_body)
 
+    def _restore_value(self, val):
+        """Recursively reconstruct native Firestore types from serialized format."""
+        if isinstance(val, dict):
+            if val.get('__type__') == 'DocumentReference' and 'path' in val:
+                return self.db.document(val['path'])
+            return {k: self._restore_value(v) for k, v in val.items()}
+        elif isinstance(val, list):
+            return [self._restore_value(v) for v in val]
+        elif isinstance(val, str):
+            # Parse ISO-8601 datetime strings back to datetime objects
+            try:
+                if len(val) >= 19 and val[4] == '-' and val[7] == '-' and val[10] == 'T':
+                    clean_val = val
+                    if val.endswith('Z'):
+                        clean_val = val[:-1] + '+00:00'
+                    return datetime.fromisoformat(clean_val)
+            except Exception:
+                pass
+        return val
+
+    def restore_backup(self, timestamp: str) -> bool:
+        """
+        1. Fetch metadata and chunks for the selected timestamp.
+        2. Combine chunks and decrypt them.
+        3. Clear existing Firestore data for the backed up collections.
+        4. Reconstruct and save all collections to Firestore.
+        5. Send email notification.
+        """
+        logger.info(f"🔄 Starting database restore for backup: {timestamp}")
+        start_time = datetime.now(timezone.utc)
+        
+        try:
+            backup_ref = self.db.collection(BACKUP_COLLECTION).document(timestamp)
+            backup_doc = backup_ref.get()
+            
+            if not backup_doc.exists:
+                raise ValueError(f"Backup snapshot '{timestamp}' does not exist.")
+                
+            metadata = backup_doc.to_dict()
+            total_chunks = metadata.get('total_chunks', 0)
+            
+            # Reconstruct encrypted string
+            chunks_ref = backup_ref.collection('chunks')
+            encrypted_parts = []
+            for i in range(total_chunks):
+                chunk_doc = chunks_ref.document(f'chunk_{i}').get()
+                if not chunk_doc.exists:
+                    raise ValueError(f"Missing chunk {i} for backup snapshot {timestamp}")
+                encrypted_parts.append(chunk_doc.to_dict().get('data', ''))
+                
+            encrypted_data = "".join(encrypted_parts)
+            
+            # Decrypt
+            decrypted_json = self.fernet.decrypt(encrypted_data.encode('utf-8')).decode('utf-8')
+            backup_data = json.loads(decrypted_json)
+            
+            # Wipe and restore backed up collections
+            restored_collections = []
+            doc_count = 0
+            
+            for collection_id, docs in backup_data.items():
+                if collection_id == BACKUP_COLLECTION:
+                    continue
+                
+                # Delete existing documents in the collection
+                coll_ref = self.db.collection(collection_id)
+                for doc in coll_ref.stream():
+                    doc.reference.delete()
+                    
+                # Restore documents
+                for doc_id, doc_data in docs.items():
+                    restored_data = self._restore_value(doc_data)
+                    coll_ref.document(doc_id).set(restored_data)
+                    doc_count += 1
+                
+                restored_collections.append(collection_id)
+                    
+            # Send notification email
+            end_time = datetime.now(timezone.utc)
+            duration = (end_time - start_time).total_seconds()
+            
+            html_body = f"""
+            <h2>🔄 SkillBridge Database Rollback Successful</h2>
+            <p>The system database has been rolled back to a previous backup snapshot.</p>
+            <ul>
+                <li><strong>Backup Snapshot:</strong> {timestamp}</li>
+                <li><strong>Rollback Performed At:</strong> {end_time.strftime('%Y-%m-%d %H:%M:%S UTC')}</li>
+                <li><strong>Collections Restored:</strong> {', '.join(restored_collections)}</li>
+                <li><strong>Documents Restored:</strong> {doc_count}</li>
+                <li><strong>Duration:</strong> {duration:.2f} seconds</li>
+            </ul>
+            <p>The rollback was successful and the system has resumed normal operations.</p>
+            """
+            self._send_email("🔄 SkillBridge Rollback Completed", html_body)
+            logger.info(f"✅ Database restore for backup {timestamp} completed successfully in {duration:.2f}s.")
+            return True
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"❌ CRITICAL ERROR during database restore: {error_msg}")
+            
+            html_body = f"""
+            <h2 style="color: red;">🚨 CRITICAL: SkillBridge Database Rollback Failed</h2>
+            <p>An error occurred during the database restore process.</p>
+            <p><strong>Error Details:</strong></p>
+            <pre style="background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px;">{error_msg}</pre>
+            <p><strong>Action Required:</strong> Please check your server logs immediately to ensure database consistency.</p>
+            """
+            self._send_email("🚨 URGENT: SkillBridge Rollback Failed", html_body)
+            raise e
+
 # Helper function to test encryption/decryption or perform manual restore if needed
+
 def decrypt_backup_payload(encrypted_data: str, secret_key: str) -> dict:
     key = base64.urlsafe_b64encode(hashlib.sha256(secret_key.encode('utf-8')).digest())
     f = Fernet(key)
