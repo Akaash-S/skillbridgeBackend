@@ -33,6 +33,9 @@ def hash_password(password: str) -> str:
 
 def verify_admin_password(password: str) -> bool:
     """Verify admin password against config/env value."""
+    raw_password = os.environ.get('DELETE_USER_PASSWORD')
+    if raw_password and password == raw_password:
+        return True
     expected_hash = os.environ.get('DELETE_USER_PASSWORD_HASH', DEFAULT_HASH)
     hashed_input = hash_password(password)
     return hashed_input == expected_hash
@@ -262,6 +265,59 @@ def admin_system_restart():
             'error': 'Recovery action failed',
             'code': 'INTERNAL_ERROR'
         }), 500
+
+# 3b. System Lock state (Persisted in Firestore)
+@admin_bp.route('/system/lock', methods=['GET'])
+@admin_required
+def admin_get_system_lock():
+    """Gets the current system lock state (e.g. proctoring exam locked)."""
+    try:
+        locked = False
+        if is_firestore_available() and db_service.db:
+            doc_ref = db_service.db.collection('system_metadata').document('config')
+            doc_snap = doc_ref.get()
+            if doc_snap.exists:
+                locked = doc_snap.to_dict().get('system_locked', False)
+        return jsonify({'system_locked': locked}), 200
+    except Exception as e:
+        logger.error(f"Failed to get system lock status: {str(e)}")
+        return jsonify({'error': 'Failed to get lock status', 'code': 'INTERNAL_ERROR'}), 500
+
+@admin_bp.route('/system/lock', methods=['POST'])
+@admin_required
+def admin_toggle_system_lock():
+    """Toggles or sets system lock state."""
+    try:
+        data = request.get_json() or {}
+        locked = data.get('locked')
+        
+        if is_firestore_available() and db_service.db:
+            doc_ref = db_service.db.collection('system_metadata').document('config')
+            doc_snap = doc_ref.get()
+            if locked is None:
+                current = doc_snap.to_dict().get('system_locked', False) if doc_snap.exists else False
+                locked = not current
+                
+            doc_ref.set({'system_locked': locked}, merge=True)
+            
+            # Log action to exceptions/logs
+            db_service.db.collection('system_logs').add({
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'level': 'INFO',
+                'message': f"[Security Audit] System lock state updated to: {locked}",
+                'service': 'system_security'
+            })
+        else:
+            if locked is None:
+                locked = False
+                
+        return jsonify({
+            'system_locked': locked,
+            'message': f"System lock set to: {locked}"
+        }), 200
+    except Exception as e:
+        logger.error(f"Failed to toggle system lock status: {str(e)}")
+        return jsonify({'error': 'Failed to toggle lock status', 'code': 'INTERNAL_ERROR'}), 500
 
 # 4. User Directory
 @admin_bp.route('/users', methods=['GET'])
