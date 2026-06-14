@@ -781,6 +781,43 @@ def admin_apply_violation_action(id):
         logger.error(f"Admin apply violation action error: {str(e)}")
         return jsonify({'error': 'Failed to process proctoring decision', 'code': 'INTERNAL_ERROR'}), 500
 
+def get_gcp_access_token():
+    """Attempts to get a GCP OAuth 2.0 access token using Application Default Credentials or Firebase credentials."""
+    import google.auth
+    import google.auth.transport.requests
+    import os
+    import json
+    import base64
+    from google.oauth2 import service_account
+    
+    # 1. Try Base64 encoded service account from env (same as Firestore uses)
+    firebase_base64 = os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')
+    if firebase_base64:
+        try:
+            missing_padding = len(firebase_base64) % 4
+            if missing_padding:
+                firebase_base64 += '=' * (4 - missing_padding)
+            decoded_credentials = base64.b64decode(firebase_base64).decode('utf-8')
+            info = json.loads(decoded_credentials)
+            scopes = ['https://www.googleapis.com/auth/compute', 'https://www.googleapis.com/auth/cloud-platform']
+            credentials = service_account.Credentials.from_service_account_info(info, scopes=scopes)
+            auth_req = google.auth.transport.requests.Request()
+            credentials.refresh(auth_req)
+            return credentials.token
+        except Exception as e:
+            logger.warning(f"Failed to get token from FIREBASE_SERVICE_ACCOUNT_BASE64: {e}")
+            
+    # 2. Try default google auth (ADC, Metadata server, environment variable path)
+    try:
+        credentials, project = google.auth.default(scopes=['https://www.googleapis.com/auth/compute', 'https://www.googleapis.com/auth/cloud-platform'])
+        auth_req = google.auth.transport.requests.Request()
+        credentials.refresh(auth_req)
+        return credentials.token
+    except Exception as e:
+        logger.warning(f"Failed to get default application credentials: {e}")
+        
+    return None
+
 # 15. GCP VM Snapshot Actions (GET & POST)
 @admin_bp.route('/backups/gcp', methods=['GET'])
 @admin_required
@@ -791,13 +828,21 @@ def admin_list_gcp_snapshots():
         project_id = os.environ.get('GCP_PROJECT_ID')
         api_key = os.environ.get('GCP_API_KEY')
         
-        if not project_id or not api_key:
-            return jsonify({'error': 'GCP credentials not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
+        if not project_id:
+            return jsonify({'error': 'GCP project ID not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
             
         try:
             import requests
-            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/global/snapshots?key={api_key}"
-            res = requests.get(url, timeout=5)
+            token = get_gcp_access_token()
+            headers = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+                
+            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/global/snapshots"
+            if not token and api_key:
+                url += f"?key={api_key}"
+                
+            res = requests.get(url, headers=headers, timeout=5)
             if res.ok:
                 items = res.json().get('items', [])
                 for item in items:
@@ -828,15 +873,23 @@ def admin_trigger_gcp_snapshot():
         disk_name = os.environ.get('GCP_DISK_NAME', 'skillbridge-prod-disk')
         api_key = os.environ.get('GCP_API_KEY')
         
-        if not project_id or not api_key:
-            return jsonify({'error': 'GCP credentials not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
+        if not project_id:
+            return jsonify({'error': 'GCP project ID not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
             
         snap_name = f"sb-prod-vm-snap-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         
         try:
             import requests
-            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/disks/{disk_name}/createSnapshot?key={api_key}"
-            res = requests.post(url, json={
+            token = get_gcp_access_token()
+            headers = {}
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+                
+            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/disks/{disk_name}/createSnapshot"
+            if not token and api_key:
+                url += f"?key={api_key}"
+                
+            res = requests.post(url, headers=headers, json={
                 'name': snap_name,
                 'description': 'SkillBridge Admin Mobile on-demand snapshot'
             }, timeout=5)
