@@ -352,7 +352,8 @@ def admin_list_users():
                     'email': data.get('email', ''),
                     'careerGoal': data.get('careerGoal', 'Not set'),
                     'createdAt': created_at,
-                    'lastLoginAt': last_login_at
+                    'lastLoginAt': last_login_at,
+                    'avatar': data.get('avatar', 'avatar_1')
                 })
         else:
             return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
