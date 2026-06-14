@@ -332,12 +332,27 @@ def admin_list_users():
             users_stream = db_service.db.collection('users').stream()
             for doc in users_stream:
                 data = doc.to_dict()
+                
+                # Safe date formatter
+                def format_date(dt):
+                    if not dt:
+                        return None
+                    if isinstance(dt, datetime):
+                        return dt.isoformat()
+                    if hasattr(dt, 'isoformat'):
+                        return dt.isoformat()
+                    return str(dt)
+                
+                created_at = format_date(data.get('createdAt')) or datetime.now(timezone.utc).isoformat()
+                last_login_at = format_date(data.get('lastLoginAt')) or created_at
+                
                 users.append({
                     'uid': doc.id,
                     'name': data.get('name', 'Learner'),
                     'email': data.get('email', ''),
                     'careerGoal': data.get('careerGoal', 'Not set'),
-                    'createdAt': data.get('createdAt', datetime.now(timezone.utc).isoformat())
+                    'createdAt': created_at,
+                    'lastLoginAt': last_login_at
                 })
         else:
             return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
