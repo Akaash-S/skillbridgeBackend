@@ -9,6 +9,7 @@ from flask import Blueprint, request, jsonify
 
 from app.config import Config
 from app.db.firestore import FirestoreService, is_firestore_available
+from google.cloud import firestore
 from app.services.firebase_service import is_firebase_available
 from app.services.backup_service import BackupService
 from cryptography.fernet import Fernet
@@ -360,11 +361,11 @@ def admin_get_user_details(uid):
             profile['uid'] = uid
             
             # Retrieve all associated documents
-            user_skills = [d.to_dict() for d in db_service.db.collection('user_skills').where('uid', '==', uid).stream()]
-            user_roadmaps = [d.to_dict() for d in db_service.db.collection('user_roadmaps').where('uid', '==', uid).stream()]
-            activity_logs = [d.to_dict() for d in db_service.db.collection('activity_logs').where('uid', '==', uid).stream()]
-            issued_certificates = [d.to_dict() for d in db_service.db.collection('issued_certificates').where('uid', '==', uid).stream()]
-            assessment_sessions = [d.to_dict() for d in db_service.db.collection('assessment_sessions').where('uid', '==', uid).stream()]
+            user_skills = [d.to_dict() for d in db_service.db.collection('user_skills').where(filter=firestore.FieldFilter('uid', '==', uid)).stream()]
+            user_roadmaps = [d.to_dict() for d in db_service.db.collection('user_roadmaps').where(filter=firestore.FieldFilter('uid', '==', uid)).stream()]
+            activity_logs = [d.to_dict() for d in db_service.db.collection('activity_logs').where(filter=firestore.FieldFilter('uid', '==', uid)).stream()]
+            issued_certificates = [d.to_dict() for d in db_service.db.collection('issued_certificates').where(filter=firestore.FieldFilter('uid', '==', uid)).stream()]
+            assessment_sessions = [d.to_dict() for d in db_service.db.collection('assessment_sessions').where(filter=firestore.FieldFilter('uid', '==', uid)).stream()]
             user_state_doc = db_service.db.collection('user_state').document(uid).get()
             user_state = user_state_doc.to_dict() if user_state_doc.exists else {}
             
@@ -410,7 +411,7 @@ def admin_reset_user(uid):
             # Wiping documents
             collections_to_wipe = ['user_skills', 'user_roadmaps', 'activity_logs', 'issued_certificates', 'assessment_sessions']
             for col_name in collections_to_wipe:
-                docs = db_service.db.collection(col_name).where('uid', '==', uid).stream()
+                docs = db_service.db.collection(col_name).where(filter=firestore.FieldFilter('uid', '==', uid)).stream()
                 for doc in docs:
                     doc.reference.delete()
                     
@@ -473,7 +474,7 @@ def admin_delete_user(uid):
             # 2. Delete all related documents in sub-collections
             collections_to_wipe = ['user_skills', 'user_roadmaps', 'activity_logs', 'issued_certificates', 'assessment_sessions']
             for col_name in collections_to_wipe:
-                docs = db_service.db.collection(col_name).where('uid', '==', uid).stream()
+                docs = db_service.db.collection(col_name).where(filter=firestore.FieldFilter('uid', '==', uid)).stream()
                 for doc in docs:
                     doc.reference.delete()
                     
@@ -593,7 +594,7 @@ def admin_get_violations():
     try:
         violations = []
         if is_firestore_available() and db_service.db:
-            violations_stream = db_service.db.collection('activity_logs').where('type', '==', 'EXAM_VIOLATION').stream()
+            violations_stream = db_service.db.collection('activity_logs').where(filter=firestore.FieldFilter('type', '==', 'EXAM_VIOLATION')).stream()
             for doc in violations_stream:
                 data = doc.to_dict()
                 violations.append({
@@ -914,9 +915,9 @@ def admin_get_live_sessions():
         if is_firestore_available() and db_service.db:
             # Query active sessions
             sessions = db_service.db.collection('assessment_sessions')\
-                .where('status', '==', 'active')\
-                .where('completed', '==', False)\
-                .where('terminated', '==', False).stream()
+                .where(filter=firestore.FieldFilter('status', '==', 'active'))\
+                .where(filter=firestore.FieldFilter('completed', '==', False))\
+                .where(filter=firestore.FieldFilter('terminated', '==', False)).stream()
                 
             assessment_counts = {}
             for doc in sessions:
