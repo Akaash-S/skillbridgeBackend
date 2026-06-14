@@ -339,29 +339,7 @@ def admin_list_users():
                     'createdAt': data.get('createdAt', datetime.now(timezone.utc).isoformat())
                 })
         else:
-            users = [
-                {
-                    'uid': 'uid_learner_1',
-                    'name': 'Alice Smith',
-                    'email': 'alice@example.com',
-                    'careerGoal': 'Data Scientist',
-                    'createdAt': (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-                },
-                {
-                    'uid': 'uid_learner_2',
-                    'name': 'Bob Johnson',
-                    'email': 'bob@example.com',
-                    'careerGoal': 'DevOps Engineer',
-                    'createdAt': (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
-                },
-                {
-                    'uid': 'uid_learner_3',
-                    'name': 'Charlie Brown',
-                    'email': 'charlie@example.com',
-                    'careerGoal': 'Fullstack Developer',
-                    'createdAt': (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
-                }
-            ]
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         return jsonify({'users': users}), 200
     except Exception as e:
         logger.error(f"Admin list users error: {str(e)}")
@@ -406,42 +384,7 @@ def admin_get_user_details(uid):
                 'xp': xp_doc.to_dict() if xp_doc.exists else {'totalXP': 0, 'level': 1}
             }), 200
         else:
-            # Return mock data if firestore is offline
-            mock_profiles = {
-                'uid_learner_3': {
-                    'name': 'Charlie Brown',
-                    'email': 'charlie@example.com',
-                    'careerGoal': 'Fullstack Developer',
-                    'education': 'Computer Science BS',
-                    'experience': '1 year internship',
-                    'interests': ['React', 'Python', 'Docker'],
-                    'onboardingCompleted': True,
-                    'createdAt': (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
-                }
-            }
-            if uid not in mock_profiles:
-                return jsonify({'error': 'User not found', 'code': 'USER_NOT_FOUND'}), 404
-            
-            profile = mock_profiles[uid]
-            profile['uid'] = uid
-            
-            return jsonify({
-                'profile': profile,
-                'user_state': {'currentStep': 2},
-                'skills': [{'name': 'Python', 'level': 'Intermediate'}],
-                'roadmaps': [{'title': 'Fullstack Dev Roadmap', 'progress': 45}],
-                'activity_logs': [
-                    {
-                        'timestamp': (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
-                        'type': 'LEARNING_STEP',
-                        'message': 'Completed step 1 of React guide'
-                    }
-                ],
-                'certificates': [],
-                'assessment_sessions': [],
-                'streak': {'currentStreak': 3, 'bestStreak': 5},
-                'xp': {'totalXP': 450, 'level': 2}
-            }), 200
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
     except Exception as e:
         logger.error(f"Admin get user details error: {str(e)}")
         return jsonify({'error': 'Failed to retrieve user details', 'code': 'INTERNAL_ERROR'}), 500
@@ -491,12 +434,7 @@ def admin_reset_user(uid):
             logger.warning(f"🔧 User uid {uid} progress was reset by administrator.")
             return jsonify({'message': 'User progress reset successfully.', 'status': 'success'}), 200
         else:
-            # Mock mode logic
-            if uid == 'uid_learner_3':
-                logger.warning(f"🔧 User uid {uid} progress was reset by administrator (mock mode).")
-                return jsonify({'message': 'User progress reset successfully (mock mode).', 'status': 'success'}), 200
-            else:
-                return jsonify({'error': 'User not found', 'code': 'USER_NOT_FOUND'}), 404
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         
     except Exception as e:
         logger.error(f"User reset error: {str(e)}")
@@ -549,12 +487,7 @@ def admin_delete_user(uid):
             logger.warning(f"❌ User uid {uid} completely deleted by administrator.")
             return jsonify({'message': 'User completely deleted from system.', 'status': 'success'}), 200
         else:
-            # Mock mode logic
-            if uid == 'uid_learner_3':
-                logger.warning(f"❌ User uid {uid} completely deleted by administrator (mock mode).")
-                return jsonify({'message': 'User completely deleted from system (mock mode).', 'status': 'success'}), 200
-            else:
-                return jsonify({'error': 'User not found', 'code': 'USER_NOT_FOUND'}), 404
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         
     except Exception as e:
         logger.error(f"User deletion error: {str(e)}")
@@ -579,22 +512,7 @@ def admin_list_backups():
                     'status': data.get('status', 'completed')
                 })
         else:
-            backups = [
-                {
-                    'timestamp': '20260610_110000',
-                    'created_at': (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat(),
-                    'doc_count': 142,
-                    'total_chunks': 1,
-                    'status': 'completed'
-                },
-                {
-                    'timestamp': '20260609_110000',
-                    'created_at': (datetime.now(timezone.utc) - timedelta(days=1, hours=12)).isoformat(),
-                    'doc_count': 140,
-                    'total_chunks': 1,
-                    'status': 'completed'
-                }
-            ]
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         return jsonify({'backups': backups}), 200
     except Exception as e:
         logger.error(f"Admin list backups error: {str(e)}")
@@ -614,7 +532,7 @@ def admin_trigger_backup():
             backup_service.perform_backup()
             return jsonify({'message': 'Manual secure backup completed successfully.', 'status': 'success'}), 200
         else:
-            return jsonify({'message': 'Manual secure backup completed successfully (mock mode).', 'status': 'success'}), 200
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
     except Exception as e:
         logger.error(f"Manual backup triggering error: {str(e)}")
         return jsonify({'error': 'Failed to perform backup', 'code': 'INTERNAL_ERROR'}), 500
@@ -643,7 +561,7 @@ def admin_rollback_backup():
             else:
                 return jsonify({'error': 'Restore operation failed.', 'code': 'RESTORE_FAILED'}), 500
         else:
-            return jsonify({'message': f'System restored to snapshot {timestamp} successfully (mock mode).', 'status': 'success'}), 200
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
             
     except Exception as e:
         logger.error(f"Admin rollback error: {str(e)}")
@@ -655,36 +573,13 @@ def admin_rollback_backup():
 def admin_get_exceptions():
     """Retrieves recent system error entries or exceptions logged."""
     try:
-        # Mocking error logs since dynamic file tailing of gunicorn logs can be platform-dependent
-        # We also look at Firestore logs collection if we have one
         logs = []
         if is_firestore_available() and db_service.db:
             logs_ref = db_service.db.collection('system_logs').order_by('timestamp', direction='DESCENDING').limit(20).stream()
             for doc in logs_ref:
                 logs.append(doc.to_dict())
-            
-        if not logs:
-            # Provide sample production exceptions if Firestore has no records
-            logs = [
-                {
-                    'timestamp': (datetime.utcnow() - timedelta(minutes=5)).isoformat(),
-                    'level': 'ERROR',
-                    'message': 'Failed to parse Adzuna api payload format',
-                    'service': 'jobs_service'
-                },
-                {
-                    'timestamp': (datetime.utcnow() - timedelta(hours=2)).isoformat(),
-                    'level': 'WARNING',
-                    'message': 'Gemini API limit reached. Exceeded 15 RPM. Throttling active.',
-                    'service': 'assistant_service'
-                },
-                {
-                    'timestamp': (datetime.utcnow() - timedelta(days=1)).isoformat(),
-                    'level': 'ERROR',
-                    'message': 'Firestore client connection timeout - retrying stream.',
-                    'service': 'firestore_client'
-                }
-            ]
+        else:
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         return jsonify({'logs': logs}), 200
     except Exception as e:
         logger.error(f"Admin exception logs error: {str(e)}")
@@ -712,55 +607,8 @@ def admin_get_violations():
                     'status': data.get('status', 'pending'),
                     'severity': data.get('severity', 'medium')
                 })
-            
-        if not violations:
-            # Enriched default mock violations for dashboard/ViolationsTab display
-            violations = [
-                {
-                    'id': 'violation_1',
-                    'uid': '3VkPsZP7tNbRZEKaZ4liMgeYps62',
-                    'userName': 'Akaash S',
-                    'userEmail': 'projectsofakaashofficials321@gmail.com',
-                    'assessmentName': 'Kubernetes Infrastructure Orchestration',
-                    'message': 'Tab switch detected: opened stackoverflow.com during exam.',
-                    'createdAt': (datetime.utcnow() - timedelta(hours=2)).isoformat(),
-                    'status': 'pending',
-                    'severity': 'medium'
-                },
-                {
-                    'id': 'violation_2',
-                    'uid': 'iikBGT4egYdlaW2p1zzIPhHguUp2',
-                    'userName': 'Dhivya Sivakumar',
-                    'userEmail': 'dhivyasivakumar00@gmail.com',
-                    'assessmentName': 'React Development & Context API State',
-                    'message': 'Face out of camera frame for 12 seconds.',
-                    'createdAt': (datetime.utcnow() - timedelta(days=2)).isoformat(),
-                    'status': 'pending',
-                    'severity': 'high'
-                },
-                {
-                    'id': 'violation_3',
-                    'uid': 'uid_learner_4',
-                    'userName': 'Frank Johnson',
-                    'userEmail': 'frank.j@example.com',
-                    'assessmentName': 'Python Scripts & Core Programming',
-                    'message': 'Multiple faces detected in camera view.',
-                    'createdAt': (datetime.utcnow() - timedelta(days=3)).isoformat(),
-                    'status': 'resolved_warning',
-                    'severity': 'high'
-                },
-                {
-                    'id': 'violation_4',
-                    'uid': 'uid_learner_5',
-                    'userName': 'Sarah Connor',
-                    'userEmail': 's.connor@example.com',
-                    'assessmentName': 'Ethical Hacking Core & Networks',
-                    'message': 'Minor audio anomalies: voice pattern detected in background.',
-                    'createdAt': (datetime.utcnow() - timedelta(days=5)).isoformat(),
-                    'status': 'dismissed',
-                    'severity': 'low'
-                }
-            ]
+        else:
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         return jsonify({'violations': violations}), 200
     except Exception as e:
         logger.error(f"Admin get violations error: {str(e)}")
@@ -786,27 +634,8 @@ def admin_list_notifications():
                     'status': data.get('status', 'delivered'),
                     'expoToken': data.get('expoToken')
                 })
-        
-        if not notifications:
-            # Preloaded mock release history logs
-            notifications = [
-                {
-                    'id': 'push_initial_1',
-                    'target': 'All Pathways',
-                    'title': '[Feature Release] Proctoring Security Dashboard',
-                    'body': 'Review real-time proctor anomalies and enforce exam locks instantly via the new Control Desk in v1.2.0-stable.',
-                    'sentAt': (datetime.utcnow() - timedelta(hours=4)).isoformat(),
-                    'status': 'delivered'
-                },
-                {
-                    'id': 'push_initial_2',
-                    'target': 'DevOps Pathway',
-                    'title': '[Security] Access Key Expirations Policies',
-                    'body': 'Security tokens rotation policies are now active. Rotate or revoke API keys directly from the monitor hub in v1.1.8.',
-                    'sentAt': (datetime.utcnow() - timedelta(hours=8)).isoformat(),
-                    'status': 'delivered'
-                }
-            ]
+        else:
+            return jsonify({'error': 'Database not available', 'code': 'DATABASE_UNAVAILABLE'}), 503
         return jsonify({'notifications': notifications}), 200
     except Exception as e:
         logger.error(f"Admin list notifications error: {str(e)}")
@@ -943,46 +772,30 @@ def admin_list_gcp_snapshots():
     """Queries and returns recent Google Compute Engine VM snapshots."""
     try:
         snapshots = []
-        # Fallback list of VM snapshots
-        snapshots = [
-            {
-                'name': 'sb-prod-vm-snap-20260610',
-                'created_at': (datetime.utcnow() - timedelta(hours=8)).isoformat(),
-                'size_gb': 20,
-                'status': 'READY',
-                'source_disk': 'skillbridge-prod-disk'
-            },
-            {
-                'name': 'sb-prod-vm-snap-20260609',
-                'created_at': (datetime.utcnow() - timedelta(days=1)).isoformat(),
-                'size_gb': 20,
-                'status': 'READY',
-                'source_disk': 'skillbridge-prod-disk'
-            }
-        ]
-        
-        # Querying live Google Compute Engine if configured
         project_id = os.environ.get('GCP_PROJECT_ID')
         api_key = os.environ.get('GCP_API_KEY')
-        if project_id and api_key:
-            try:
-                import requests
-                url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/global/snapshots?key={api_key}"
-                res = requests.get(url, timeout=5)
-                if res.ok:
-                    items = res.json().get('items', [])
-                    if items:
-                        snapshots = []
-                        for item in items:
-                            snapshots.append({
-                                'name': item.get('name'),
-                                'created_at': item.get('creationTimestamp'),
-                                'size_gb': int(item.get('diskSizeGb', 0)),
-                                'status': item.get('status'),
-                                'source_disk': item.get('sourceDisk', '').split('/')[-1] if item.get('sourceDisk') else 'unknown'
-                            })
-            except Exception:
-                pass
+        
+        if not project_id or not api_key:
+            return jsonify({'error': 'GCP credentials not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
+            
+        try:
+            import requests
+            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/global/snapshots?key={api_key}"
+            res = requests.get(url, timeout=5)
+            if res.ok:
+                items = res.json().get('items', [])
+                for item in items:
+                    snapshots.append({
+                        'name': item.get('name'),
+                        'created_at': item.get('creationTimestamp'),
+                        'size_gb': int(item.get('diskSizeGb', 0)),
+                        'status': item.get('status'),
+                        'source_disk': item.get('sourceDisk', '').split('/')[-1] if item.get('sourceDisk') else 'unknown'
+                    })
+            else:
+                return jsonify({'error': f"GCP API returned error: {res.text}", 'code': 'GCP_API_ERROR'}), res.status_code
+        except Exception as e:
+            return jsonify({'error': f"Failed to connect to GCP API: {str(e)}", 'code': 'GCP_CONNECTION_ERROR'}), 500
                 
         return jsonify({'snapshots': snapshots}), 200
     except Exception as e:
@@ -999,31 +812,29 @@ def admin_trigger_gcp_snapshot():
         disk_name = os.environ.get('GCP_DISK_NAME', 'skillbridge-prod-disk')
         api_key = os.environ.get('GCP_API_KEY')
         
+        if not project_id or not api_key:
+            return jsonify({'error': 'GCP credentials not configured', 'code': 'GCP_CONFIG_ERROR'}), 400
+            
         snap_name = f"sb-prod-vm-snap-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         
-        # Simulates creating a disk snapshot backup if not fully configured
-        success = True
-        if project_id and api_key:
-            try:
-                import requests
-                url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/disks/{disk_name}/createSnapshot?key={api_key}"
-                res = requests.post(url, json={
-                    'name': snap_name,
-                    'description': 'SkillBridge Admin Mobile on-demand snapshot'
-                }, timeout=5)
-                if not res.ok:
-                    success = False
-            except Exception:
-                success = False
-                
-        if success:
-            return jsonify({
+        try:
+            import requests
+            url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/disks/{disk_name}/createSnapshot?key={api_key}"
+            res = requests.post(url, json={
                 'name': snap_name,
-                'status': 'READY',
-                'message': 'GCP disk snapshot created successfully.'
-            }), 200
-        else:
-            return jsonify({'error': 'GCP createSnapshot API failure', 'code': 'GCP_API_ERROR'}), 500
+                'description': 'SkillBridge Admin Mobile on-demand snapshot'
+            }, timeout=5)
+            if res.ok:
+                return jsonify({
+                    'name': snap_name,
+                    'status': 'READY',
+                    'message': 'GCP disk snapshot created successfully.'
+                }), 200
+            else:
+                return jsonify({'error': f"GCP createSnapshot API failure: {res.text}", 'code': 'GCP_API_ERROR'}), res.status_code
+        except Exception as e:
+            return jsonify({'error': f"GCP connection failure: {str(e)}", 'code': 'GCP_CONNECTION_ERROR'}), 500
+            
     except Exception as e:
         logger.error(f"Admin trigger GCP snapshot error: {str(e)}")
         return jsonify({'error': 'Failed to trigger GCP disk snapshot', 'code': 'INTERNAL_ERROR'}), 500
