@@ -845,14 +845,20 @@ def admin_list_gcp_snapshots():
             res = requests.get(url, headers=headers, timeout=5)
             if res.ok:
                 items = res.json().get('items', [])
+                disk_name = os.environ.get('GCP_DISK_NAME', 'skillbridge-backend')
                 for item in items:
-                    snapshots.append({
-                        'name': item.get('name'),
-                        'created_at': item.get('creationTimestamp'),
-                        'size_gb': int(item.get('diskSizeGb', 0)),
-                        'status': item.get('status'),
-                        'source_disk': item.get('sourceDisk', '').split('/')[-1] if item.get('sourceDisk') else 'unknown'
-                    })
+                    source_disk_full = item.get('sourceDisk', '')
+                    source_disk = source_disk_full.split('/')[-1] if source_disk_full else 'unknown'
+                    
+                    # Filter by disk name (skillbridge-backend)
+                    if source_disk == disk_name or disk_name in item.get('name', ''):
+                        snapshots.append({
+                            'name': item.get('name'),
+                            'created_at': item.get('creationTimestamp'),
+                            'size_gb': int(item.get('diskSizeGb', 0)),
+                            'status': item.get('status'),
+                            'source_disk': source_disk
+                        })
             else:
                 return jsonify({'error': f"GCP API returned error: {res.text}", 'code': 'GCP_API_ERROR'}), res.status_code
         except Exception as e:
