@@ -79,3 +79,6 @@ blinker==1.7.0
 
 # Groq AI (Learning Assistant)
 groq>=0.12.0
+
+# Host System Telemetry Metrics
+psutil>=5.9.0

@@ -98,6 +98,41 @@ class AssessmentService:
             
             self.db_service.update_document(self.collection, session_id, update_data)
             
+            # Create EXAM_VIOLATION in activity_logs for proctoring center visibility
+            uid = session.get('uid')
+            role_id = session.get('roleId', 'unknown-assessment')
+            
+            # Map roleId to assessmentName
+            role_names = {
+                'frontend-dev': 'Frontend React Core Evaluation',
+                'backend-dev': 'Backend API Core Architecture',
+                'fullstack-dev': 'Fullstack Engineering Assessment',
+                'data-scientist': 'Data Science & Machine Learning',
+                'devops-engineer': 'DevOps & Kubernetes Infrastructure Orchestration',
+                'cloud-architect': 'Cloud Architecture Design'
+            }
+            assessment_name = role_names.get(role_id, role_id.replace('-', ' ').title())
+            
+            user_doc = self.db_service.get_document('users', uid) if uid else None
+            user_name = user_doc.get('name', 'Learner') if user_doc else 'Learner'
+            user_email = user_doc.get('email', 'learner@example.com') if user_doc else 'learner@example.com'
+            
+            violation_doc = {
+                'uid': uid,
+                'userName': user_name,
+                'userEmail': user_email,
+                'assessmentName': assessment_name,
+                'message': details or f"Violation detected on frontend: {violation_type}",
+                'createdAt': datetime.utcnow(),
+                'status': 'pending',
+                'severity': 'high' if 'exit' in violation_type.lower() or terminated else 'medium',
+                'type': 'EXAM_VIOLATION'
+            }
+            
+            import uuid
+            violation_id = f"viol_{uuid.uuid4().hex}"
+            self.db_service.create_document('activity_logs', violation_id, violation_doc)
+            
             return {
                 'violations': violations,
                 'terminated': terminated,

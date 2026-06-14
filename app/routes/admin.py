@@ -1090,3 +1090,49 @@ def admin_revoke_key():
     except Exception as e:
         logger.error(f"Admin key revocation error: {str(e)}")
         return jsonify({'error': 'Failed to revoke credentials keys', 'code': 'INTERNAL_ERROR'}), 500
+
+# 17. Real-Time Active Sessions Count
+@admin_bp.route('/live-sessions', methods=['GET'])
+@admin_required
+def admin_get_live_sessions():
+    """Gets the count of active proctored assessment sessions and active assessments list."""
+    try:
+        live_sessions = 0
+        active_assessments = []
+        
+        if is_firestore_available() and db_service.db:
+            # Query active sessions
+            sessions = db_service.db.collection('assessment_sessions')\
+                .where('status', '==', 'active')\
+                .where('completed', '==', False)\
+                .where('terminated', '==', False).stream()
+                
+            assessment_counts = {}
+            for doc in sessions:
+                live_sessions += 1
+                data = doc.to_dict()
+                role_id = data.get('roleId', 'Unknown')
+                assessment_counts[role_id] = assessment_counts.get(role_id, 0) + 1
+                
+            # Translate role_ids to pretty names
+            role_names = {
+                'frontend-dev': 'Frontend React Core Evaluation',
+                'backend-dev': 'Backend API Core Architecture',
+                'fullstack-dev': 'Fullstack Engineering Assessment',
+                'data-scientist': 'Data Science & Machine Learning',
+                'devops-engineer': 'DevOps & Kubernetes Infrastructure Orchestration',
+                'cloud-architect': 'Cloud Architecture Design'
+            }
+            
+            for role_id, count in assessment_counts.items():
+                name = role_names.get(role_id, role_id.replace('-', ' ').title())
+                active_assessments.append({'name': name, 'count': count})
+                
+        return jsonify({
+            'liveSessions': live_sessions,
+            'activeAssessments': active_assessments
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching live sessions: {str(e)}")
+        return jsonify({'error': 'Failed to fetch active sessions', 'code': 'INTERNAL_ERROR'}), 500
+
