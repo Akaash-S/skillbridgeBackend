@@ -947,3 +947,176 @@ def admin_get_live_sessions():
         logger.error(f"Error fetching live sessions: {str(e)}")
         return jsonify({'error': 'Failed to fetch active sessions', 'code': 'INTERNAL_ERROR'}), 500
 
+
+# 18. Active Test Integration Endpoint
+@admin_bp.route('/integrations/<key>/test', methods=['POST'])
+@admin_required
+def admin_test_integration(key):
+    """Executes a real connection test to verify API keys and credentials endpoints."""
+    try:
+        import requests
+        import smtplib
+        
+        status_code = 200
+        is_error = False
+        message = "Connected successfully"
+        
+        if key == 'firebase_auth':
+            if is_firebase_available():
+                from firebase_admin import auth
+                try:
+                    # Just test listing 0 users (which acts as a permission handshake query)
+                    auth.list_users(max_results=1)
+                    message = "Firebase Auth connection verified."
+                except Exception as fe:
+                    is_error = True
+                    status_code = 400
+                    message = f"Firebase Auth list failure: {str(fe)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "Firebase Admin SDK not initialized."
+                
+        elif key == 'firestore_db':
+            if is_firestore_available() and db_service.db:
+                try:
+                    # Write and delete dummy metadata to test write/read permissions
+                    test_ref = db_service.db.collection('system_metadata').document('connection_test')
+                    test_ref.set({'tested_at': datetime.utcnow()})
+                    test_ref.delete()
+                    message = "Firestore read/write permissions verified."
+                except Exception as fse:
+                    is_error = True
+                    status_code = 400
+                    message = f"Firestore query failure: {str(fse)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "Firestore client unavailable."
+                
+        elif key == 'gemini_api':
+            api_key = Config.GEMINI_API_KEY
+            if api_key:
+                try:
+                    # Call standard models list to verify key permissions
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                    res = requests.get(url, timeout=5)
+                    if res.ok:
+                        message = "Gemini key verified successfully."
+                    else:
+                        is_error = True
+                        status_code = res.status_code
+                        message = f"Gemini API returned code {res.status_code}"
+                except Exception as ex:
+                    is_error = True
+                    status_code = 500
+                    message = f"Gemini connection error: {str(ex)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "Gemini API key not configured."
+                
+        elif key == 'groq_api':
+            api_key = Config.GROQ_API_KEY
+            if api_key:
+                try:
+                    headers = {"Authorization": f"Bearer {api_key}"}
+                    # Check list models endpoint
+                    url = "https://api.groq.com/openai/v1/models"
+                    res = requests.get(url, headers=headers, timeout=5)
+                    if res.ok:
+                        message = "Groq key verified successfully."
+                    else:
+                        is_error = True
+                        status_code = res.status_code
+                        message = f"Groq API returned code {res.status_code}"
+                except Exception as ex:
+                    is_error = True
+                    status_code = 500
+                    message = f"Groq connection error: {str(ex)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "Groq API key not configured."
+                
+        elif key == 'smtp_server':
+            if Config.SMTP_USER and Config.SMTP_PASSWORD:
+                try:
+                    # Try connecting and sending a handshake (EHLO)
+                    server = smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT, timeout=5)
+                    if Config.SMTP_USE_TLS:
+                        server.starttls()
+                    server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
+                    server.quit()
+                    message = "SMTP handshake and credentials authenticated."
+                except Exception as ex:
+                    is_error = True
+                    status_code = 400
+                    message = f"SMTP auth failure: {str(ex)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "SMTP host credentials not configured."
+                
+        elif key == 'youtube_api':
+            api_key = Config.YOUTUBE_API_KEY
+            if api_key:
+                try:
+                    url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=docker&key={api_key}"
+                    res = requests.get(url, timeout=5)
+                    if res.ok:
+                        message = "YouTube API key verified successfully."
+                    else:
+                        is_error = True
+                        status_code = res.status_code
+                        message = f"YouTube API returned code {res.status_code}"
+                except Exception as ex:
+                    is_error = True
+                    status_code = 500
+                    message = f"YouTube connection error: {str(ex)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "YouTube API key not configured."
+                
+        elif key == 'adzuna_jobs_api':
+            app_id = Config.ADZUNA_APP_ID
+            app_key = Config.ADZUNA_APP_KEY
+            if app_id and app_key:
+                try:
+                    url = f"https://api.adzuna.com/v1/api/jobs/gb/search/1?app_id={app_id}&app_key={app_key}&results_per_page=1"
+                    res = requests.get(url, timeout=5)
+                    if res.ok:
+                        message = "Adzuna credentials verified successfully."
+                    else:
+                        is_error = True
+                        status_code = res.status_code
+                        message = f"Adzuna API returned code {res.status_code}"
+                except Exception as ex:
+                    is_error = True
+                    status_code = 500
+                    message = f"Adzuna connection error: {str(ex)}"
+            else:
+                is_error = True
+                status_code = 400
+                message = "Adzuna app ID or app key not configured."
+        else:
+            is_error = True
+            status_code = 404
+            message = f"Unknown integration key: {key}"
+            
+        return jsonify({
+            'status': 'connected' if not is_error else 'error',
+            'status_code': status_code,
+            'is_error': is_error,
+            'message': message
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Active integration test failure for {key}: {str(e)}")
+        return jsonify({
+            'error': f"Failed to test integration: {str(e)}",
+            'code': 'INTERNAL_ERROR'
+        }), 500
+
+
