@@ -56,6 +56,12 @@ services:
       # CORS Configuration
       - CORS_ORIGINS=${CORS_ORIGINS}
       
+      # GCP VM Snapshot Configuration
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_ZONE=${GCP_ZONE:-asia-south1-c}
+      - GCP_DISK_NAME=${GCP_DISK_NAME:-skillbridge-backend}
+      - GCP_API_KEY=${GCP_API_KEY}
+      
     restart: unless-stopped
     
     healthcheck:
