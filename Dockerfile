@@ -22,9 +22,9 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt requirements-minimal.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir gunicorn==21.2.0
+RUN pip install --no-cache-dir --default-timeout=1000 --retries 10 --upgrade pip && \
+    pip install --no-cache-dir --default-timeout=1000 --retries 10 -r requirements.txt && \
+    pip install --no-cache-dir --default-timeout=1000 --retries 10 gunicorn==21.2.0
 
 # Copy only the application code (excluding nginx, scripts, etc.)
 COPY app/ ./app/
