@@ -146,8 +146,8 @@ def admin_login():
 def admin_health():
     """Returns real-time system metrics and API integration statuses."""
     try:
-        # System status
-        cpu_percent = psutil.cpu_percent() if psutil else 12.5
+        # System status (interval=0.1 blocks for 100ms to calculate actual CPU load accurately)
+        cpu_percent = psutil.cpu_percent(interval=0.1) if psutil else 12.5
         
         if psutil:
             virtual_mem = psutil.virtual_memory()
