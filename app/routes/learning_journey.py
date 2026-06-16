@@ -79,6 +79,49 @@ def get_modules():
             'code': 'GET_MODULES_ERROR'
         }), 500
 
+@learning_journey_bp.route('/module/start', methods=['POST'])
+@auth_required
+def start_module():
+    """
+    Mark a module's learning phase as started (records start timestamp)
+    Expected payload: { "moduleIndex": number }
+    """
+    try:
+        uid = request.current_user['uid']
+        data = request.get_json()
+        
+        if not validate_required_fields(data, ['moduleIndex']):
+            return jsonify({
+                'error': 'Missing required field: moduleIndex',
+                'code': 'VALIDATION_ERROR'
+            }), 400
+            
+        try:
+            module_index = int(data['moduleIndex'])
+        except (ValueError, TypeError):
+            return jsonify({
+                'error': 'moduleIndex must be a valid number',
+                'code': 'VALIDATION_ERROR'
+            }), 400
+            
+        success = module_service.start_module(uid, module_index)
+        if not success:
+            return jsonify({
+                'error': 'Failed to start module tracking',
+                'code': 'START_FAILED'
+            }), 500
+            
+        return jsonify({
+            'message': 'Module tracking started successfully',
+            'moduleIndex': module_index
+        }), 200
+    except Exception as e:
+        logger.error(f"Start module error: {str(e)}")
+        return jsonify({
+            'error': 'Failed to start module tracking',
+            'code': 'START_MODULE_ERROR'
+        }), 500
+
 @learning_journey_bp.route('/module/complete', methods=['POST'])
 @auth_required
 def complete_module():

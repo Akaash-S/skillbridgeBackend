@@ -109,6 +109,9 @@ class ModuleService:
                     'completed': module_meta.get('completed', False),
                     'unlocked': module_meta.get('unlocked', False),
                     'quizPassed': module_meta.get('quizPassed', False),
+                    'startedAt': module_meta.get('startedAt'),
+                    'completedAt': module_meta.get('completedAt'),
+                    'duration': module_meta.get('duration'),
                     'skills': module_skills
                 })
                 
@@ -118,6 +121,34 @@ class ModuleService:
             logger.error(f"Error getting or initializing modules for user {uid}: {str(e)}")
             return []
             
+    def start_module(self, uid: str, module_index: int) -> bool:
+        """Mark a module as started and record startedAt time"""
+        try:
+            active_roadmap = self.db_service.get_user_roadmap(uid)
+            if not active_roadmap:
+                logger.warning(f"No active roadmap found for user {uid}")
+                return False
+                
+            roadmap_modules = active_roadmap.get('roadmapModules', [])
+            if not roadmap_modules or module_index < 0 or module_index >= len(roadmap_modules):
+                logger.warning(f"Invalid module index {module_index} for user {uid}")
+                return False
+                
+            # Only set startedAt if not already set
+            if not roadmap_modules[module_index].get('startedAt'):
+                roadmap_modules[module_index]['startedAt'] = datetime.utcnow().isoformat()
+                
+                roadmap_id = active_roadmap.get('id')
+                if not roadmap_id:
+                    roadmap_id = f"{uid}_{active_roadmap.get('roleId')}"
+                    
+                self._update_roadmap_in_db(uid, roadmap_id, active_roadmap, roadmap_modules)
+                logger.info(f"Marked module {module_index} started for user {uid}")
+            return True
+        except Exception as e:
+            logger.error(f"Error starting module {module_index} for user {uid}: {str(e)}")
+            return False
+
     def complete_module(self, uid: str, module_index: int) -> bool:
         """Mark a module's learning resource phase as completed"""
         try:
@@ -132,6 +163,25 @@ class ModuleService:
                 return False
                 
             roadmap_modules[module_index]['completed'] = True
+            
+            # Record completedAt and calculate duration
+            now = datetime.utcnow().isoformat()
+            roadmap_modules[module_index]['completedAt'] = now
+            
+            started_at_str = roadmap_modules[module_index].get('startedAt')
+            if started_at_str:
+                try:
+                    started_at = datetime.fromisoformat(started_at_str)
+                    completed_at = datetime.fromisoformat(now)
+                    diff = completed_at - started_at
+                    duration_minutes = diff.total_seconds() / 60.0
+                    roadmap_modules[module_index]['duration'] = duration_minutes
+                except Exception as e:
+                    logger.error(f"Error calculating module duration: {str(e)}")
+            else:
+                # Fallback based on number of skills
+                skills_count = len(active_roadmap.get('milestones', [])[module_index].get('skills', [])) if module_index < len(active_roadmap.get('milestones', [])) else 1
+                roadmap_modules[module_index]['duration'] = skills_count * 45.0
             
             roadmap_id = active_roadmap.get('id')
             if not roadmap_id:

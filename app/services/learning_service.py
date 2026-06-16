@@ -520,6 +520,32 @@ class LearningService:
             search_response = search_request.execute()
             items = search_response.get('items', [])
             
+            # Extract video IDs to query their details for dynamic durations
+            video_ids = []
+            for item in items:
+                v_id = item['id'].get('videoId')
+                if v_id:
+                    video_ids.append(v_id)
+            
+            # Fetch video details for durations
+            video_durations_map = {}
+            if video_ids:
+                try:
+                    details_request = youtube.videos().list(
+                        part='contentDetails',
+                        id=','.join(video_ids)
+                    )
+                    details_response = details_request.execute()
+                    for details_item in details_response.get('items', []):
+                        v_id = details_item.get('id')
+                        duration_iso = details_item.get('contentDetails', {}).get('duration')
+                        if v_id and duration_iso:
+                            from app.routes.courses import parse_duration, format_duration
+                            duration_seconds = parse_duration(duration_iso)
+                            video_durations_map[v_id] = format_duration(duration_seconds)
+                except Exception as detail_err:
+                    logger.warning(f"Failed to fetch YouTube video details/durations: {str(detail_err)}")
+            
             new_resources = []
             for item in items:
                 video_id = item['id'].get('videoId')
@@ -533,6 +559,9 @@ class LearningService:
                 # Make the ID unique to the role so we cache separate links per role
                 resource_id = f"yt_{role_id}_{video_id}" if role_id else f"yt_{video_id}"
                 
+                # Retrieve dynamic duration or fallback to '20m'
+                duration_str = video_durations_map.get(video_id, '20m')
+                
                 video_resource = {
                     'id': resource_id,
                     'skillId': skill_id,
@@ -541,7 +570,7 @@ class LearningService:
                     'title': title,
                     'url': f"https://www.youtube.com/watch?v={video_id}",
                     'type': 'video',
-                    'duration': '20m', # Default duration approximation
+                    'duration': duration_str,
                     'provider': channel_title,
                     'rating': 4.7,
                     'verified': True,
@@ -779,22 +808,29 @@ class LearningService:
                     types_completed[resource_type] = 0
                 types_completed[resource_type] += 1
             
-            # Calculate total learning hours (estimated)
-            total_hours = 0
-            for completion in completions:
-                resource = completion.get('resource', {})
-                duration_str = resource.get('duration', '0h')
-                
-                # Simple parsing of duration (e.g., "2h", "30m", "1.5h")
-                try:
-                    if 'h' in duration_str:
-                        hours = float(duration_str.replace('h', '').strip())
-                        total_hours += hours
-                    elif 'm' in duration_str:
-                        minutes = float(duration_str.replace('m', '').strip())
-                        total_hours += minutes / 60
-                except:
-                    pass  # Skip invalid duration formats
+            # Calculate total learning hours from completed roadmap modules
+            active_roadmap = self.db_service.get_user_roadmap(uid)
+            total_hours = 0.0
+            if active_roadmap:
+                roadmap_modules = active_roadmap.get('roadmapModules', [])
+                for m in roadmap_modules:
+                    if m.get('completed'):
+                        # If duration is already stored, use it (duration is in minutes)
+                        if m.get('duration') is not None:
+                            total_hours += m.get('duration') / 60.0
+                        elif m.get('startedAt') and m.get('completedAt'):
+                            try:
+                                start = datetime.fromisoformat(m.get('startedAt'))
+                                end = datetime.fromisoformat(m.get('completedAt'))
+                                if end > start:
+                                    total_hours += (end - start).total_seconds() / 3600.0
+                            except:
+                                total_hours += 1.0
+                        else:
+                            total_hours += 1.0
+            else:
+                # Fallback based on unique skills learned (e.g. 1.5 hours per skill)
+                total_hours = len(skills_learned) * 1.5
             
             return {
                 'totalCompleted': total_completed,
