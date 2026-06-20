@@ -209,15 +209,15 @@ class BackupService:
                 pass
         return val
 
-    def restore_backup(self, timestamp: str) -> bool:
+    def restore_backup(self, timestamp: str, dry_run: bool = False) -> bool:
         """
         1. Fetch metadata and chunks for the selected timestamp.
         2. Combine chunks and decrypt them.
-        3. Clear existing Firestore data for the backed up collections.
-        4. Reconstruct and save all collections to Firestore.
+        3. Clear existing Firestore data for the backed up collections (skipped in dry_run).
+        4. Reconstruct and save all collections to Firestore (skipped in dry_run).
         5. Send email notification.
         """
-        logger.info(f"🔄 Starting database restore for backup: {timestamp}")
+        logger.info(f"🔄 Starting {'dry-run ' if dry_run else ''}database restore for backup: {timestamp}")
         start_time = datetime.now(timezone.utc)
         
         try:
@@ -253,16 +253,22 @@ class BackupService:
                 if collection_id == BACKUP_COLLECTION:
                     continue
                 
-                # Delete existing documents in the collection
-                coll_ref = self.db.collection(collection_id)
-                for doc in coll_ref.stream():
-                    doc.reference.delete()
-                    
-                # Restore documents
-                for doc_id, doc_data in docs.items():
-                    restored_data = self._restore_value(doc_data)
-                    coll_ref.document(doc_id).set(restored_data)
-                    doc_count += 1
+                if not dry_run:
+                    # Delete existing documents in the collection
+                    coll_ref = self.db.collection(collection_id)
+                    for doc in coll_ref.stream():
+                        doc.reference.delete()
+                        
+                    # Restore documents
+                    for doc_id, doc_data in docs.items():
+                        restored_data = self._restore_value(doc_data)
+                        coll_ref.document(doc_id).set(restored_data)
+                        doc_count += 1
+                else:
+                    # Dry run validation
+                    for doc_id, doc_data in docs.items():
+                        self._restore_value(doc_data)
+                        doc_count += 1
                 
                 restored_collections.append(collection_id)
                     
@@ -270,20 +276,23 @@ class BackupService:
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
             
-            html_body = f"""
-            <h2>🔄 SkillBridge Database Rollback Successful</h2>
-            <p>The system database has been rolled back to a previous backup snapshot.</p>
-            <ul>
-                <li><strong>Backup Snapshot:</strong> {timestamp}</li>
-                <li><strong>Rollback Performed At:</strong> {end_time.strftime('%Y-%m-%d %H:%M:%S UTC')}</li>
-                <li><strong>Collections Restored:</strong> {', '.join(restored_collections)}</li>
-                <li><strong>Documents Restored:</strong> {doc_count}</li>
-                <li><strong>Duration:</strong> {duration:.2f} seconds</li>
-            </ul>
-            <p>The rollback was successful and the system has resumed normal operations.</p>
-            """
-            self._send_email("🔄 SkillBridge Rollback Completed", html_body)
-            logger.info(f"✅ Database restore for backup {timestamp} completed successfully in {duration:.2f}s.")
+            if not dry_run:
+                html_body = f"""
+                <h2>🔄 SkillBridge Database Rollback Successful</h2>
+                <p>The system database has been rolled back to a previous backup snapshot.</p>
+                <ul>
+                    <li><strong>Backup Snapshot:</strong> {timestamp}</li>
+                    <li><strong>Rollback Performed At:</strong> {end_time.strftime('%Y-%m-%d %H:%M:%S UTC')}</li>
+                    <li><strong>Collections Restored:</strong> {', '.join(restored_collections)}</li>
+                    <li><strong>Documents Restored:</strong> {doc_count}</li>
+                    <li><strong>Duration:</strong> {duration:.2f} seconds</li>
+                </ul>
+                <p>The rollback was successful and the system has resumed normal operations.</p>
+                """
+                self._send_email("🔄 SkillBridge Rollback Completed", html_body)
+                logger.info(f"✅ Database restore for backup {timestamp} completed successfully in {duration:.2f}s.")
+            else:
+                logger.info(f"✅ Database dry-run restore check for backup {timestamp} completed successfully in {duration:.2f}s. No changes were written to the database.")
             return True
             
         except Exception as e:

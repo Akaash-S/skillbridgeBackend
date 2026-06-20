@@ -590,15 +590,19 @@ def admin_rollback_backup():
             
         timestamp = data['timestamp']
         password = data['password']
+        dry_run = data.get('dry_run', False)
         
         if not verify_admin_password(password):
             return jsonify({'error': 'Invalid administrator password', 'code': 'UNAUTHORIZED'}), 401
             
         if is_firestore_available() and db_service.db:
             backup_service = BackupService()
-            success = backup_service.restore_backup(timestamp)
+            success = backup_service.restore_backup(timestamp, dry_run=dry_run)
             if success:
-                return jsonify({'message': f'System restored to snapshot {timestamp} successfully.', 'status': 'success'}), 200
+                if dry_run:
+                    return jsonify({'message': f'Dry run validation for snapshot {timestamp} completed successfully.', 'status': 'success'}), 200
+                else:
+                    return jsonify({'message': f'System restored to snapshot {timestamp} successfully.', 'status': 'success'}), 200
             else:
                 return jsonify({'error': 'Restore operation failed.', 'code': 'RESTORE_FAILED'}), 500
         else:
