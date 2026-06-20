@@ -329,9 +329,33 @@ def admin_list_users():
         users = []
         # Get users from Firestore
         if is_firestore_available() and db_service.db:
+            # Fetch all user states in one query to avoid N+1 query problem
+            user_states = {}
+            try:
+                user_states_stream = db_service.db.collection('user_state').stream()
+                for doc in user_states_stream:
+                    user_states[doc.id] = doc.to_dict()
+            except Exception as e:
+                logger.error(f"Error streaming user states: {str(e)}")
+
             users_stream = db_service.db.collection('users').stream()
             for doc in users_stream:
                 data = doc.to_dict()
+                uid = doc.id
+                
+                # Resolve career goal
+                career_goal = data.get('careerGoal')
+                if not career_goal or not career_goal.strip():
+                    u_state = user_states.get(uid, {})
+                    target_role = u_state.get('targetRole')
+                    if target_role:
+                        if isinstance(target_role, str) and target_role.strip():
+                            career_goal = target_role.strip()
+                        elif isinstance(target_role, dict) and target_role.get('title'):
+                            career_goal = target_role.get('title', '').strip()
+                
+                if not career_goal or not career_goal.strip():
+                    career_goal = 'Not set'
                 
                 # Safe date formatter
                 def format_date(dt):
@@ -347,10 +371,10 @@ def admin_list_users():
                 last_login_at = format_date(data.get('lastLoginAt')) or created_at
                 
                 users.append({
-                    'uid': doc.id,
+                    'uid': uid,
                     'name': data.get('name', 'Learner'),
                     'email': data.get('email', ''),
-                    'careerGoal': data.get('careerGoal', 'Not set'),
+                    'careerGoal': career_goal,
                     'createdAt': created_at,
                     'lastLoginAt': last_login_at,
                     'avatar': data.get('avatar', 'avatar_1')
