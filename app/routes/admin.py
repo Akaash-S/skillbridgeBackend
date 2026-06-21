@@ -3,6 +3,7 @@ import json
 import base64
 import hashlib
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Blueprint, request, jsonify
@@ -129,6 +130,21 @@ def admin_login():
         fernet = get_fernet_instance()
         token = fernet.encrypt(json.dumps(payload).encode('utf-8')).decode('utf-8')
         
+        # Log session in database
+        try:
+            session_id = str(uuid.uuid4())
+            session_data = {
+                'session_id': session_id,
+                'login_time': datetime.now(timezone.utc).isoformat(),
+                'expires_at': expires_at.isoformat(),
+                'ip_address': request.remote_addr,
+                'user_agent': request.headers.get('User-Agent', 'Unknown'),
+                'token_hash': hashlib.sha256(token.encode('utf-8')).hexdigest()
+            }
+            db_service.create_document('admin_sessions', session_id, session_data)
+        except Exception as session_err:
+            logger.error(f"Failed to log admin session in database: {str(session_err)}")
+            
         return jsonify({
             'token': token,
             'expires_at': expires_at.isoformat()
@@ -1222,5 +1238,34 @@ def admin_test_integration(key):
             'error': f"Failed to test integration: {str(e)}",
             'code': 'INTERNAL_ERROR'
         }), 500
+
+# 15. Get Admin Login Sessions
+@admin_bp.route('/sessions', methods=['GET'])
+@admin_required
+def admin_get_sessions():
+    """Retrieves all logged admin sessions from Firestore."""
+    try:
+        sessions = []
+        if is_firestore_available() and db_service.db:
+            sessions_stream = db_service.db.collection('admin_sessions').order_by('login_time', direction='DESCENDING').stream()
+            for doc in sessions_stream:
+                sessions.append(doc.to_dict())
+        return jsonify({'sessions': sessions}), 200
+    except Exception as e:
+        logger.error(f"Failed to retrieve admin sessions: {str(e)}")
+        return jsonify({'error': 'Failed to retrieve sessions', 'code': 'INTERNAL_ERROR'}), 500
+
+@admin_bp.route('/sessions/<session_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_session(session_id):
+    """Revokes/deletes a specific admin session."""
+    try:
+        if is_firestore_available() and db_service.db:
+            db_service.db.collection('admin_sessions').document(session_id).delete()
+            return jsonify({'message': 'Session revoked successfully'}), 200
+        return jsonify({'error': 'Database unavailable', 'code': 'DATABASE_UNAVAILABLE'}), 503
+    except Exception as e:
+        logger.error(f"Failed to delete admin session: {str(e)}")
+        return jsonify({'error': 'Failed to revoke session', 'code': 'INTERNAL_ERROR'}), 500
 
 
