@@ -39,8 +39,9 @@ class Config:
     EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 10))  # emails per minute
     EMAIL_BATCH_SIZE = int(os.environ.get('EMAIL_BATCH_SIZE', 50))  # for bulk emails
     
-    # Environment
+    # Environment & CORS
     FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
     
     @staticmethod
     def validate_config():

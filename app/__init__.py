@@ -26,20 +26,22 @@ def create_app():
     # Initialize Limiter with app
     limiter.init_app(app)
     
-    # Configure CORS
-    cors_origins = os.environ.get('CORS_ORIGINS', 'https://skillbridge.asolvitra.tech').split(',')
-    is_production = os.environ.get('FLASK_ENV') == 'production'
+    # Configure CORS dynamically from environment variable
+    cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+    cors_origins = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
     
-    # In production, Nginx/Render handles CORS headers. Flask-CORS is only needed for local dev.
-    if not is_production:
-        CORS(app, 
-             resources={r"/*": {"origins": cors_origins}},
-             supports_credentials=True,
-             allow_headers=["Content-Type", "Authorization"],
-             methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-        logger.info(f"🌐 CORS enabled by Flask for origins: {cors_origins}")
+    if cors_origins:
+        CORS(
+            app,
+            resources={r"/*": {"origins": cors_origins}},
+            supports_credentials=True,
+            allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+            methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            expose_headers=["Content-Type", "Authorization", "Set-Cookie"]
+        )
+        logger.info(f"🌐 CORS enabled for origins from environment: {cors_origins}")
     else:
-        logger.info("🌐 Flask-CORS disabled (Handled by Nginx/Proxy in production)")
+        logger.warning("⚠️ CORS_ORIGINS is not set in environment. CORS is not configured.")
 
     
     # Initialize Firebase with detailed status reporting
