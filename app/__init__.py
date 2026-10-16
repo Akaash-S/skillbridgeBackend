@@ -122,16 +122,21 @@ def create_app():
     @app.route('/health')
     def health_check():
         firebase_status = get_firebase_status()
+        firestore_avail = is_firestore_available()
+        from app.db.firestore import is_mock_allowed
+        mock_allowed = is_mock_allowed()
+        is_healthy = firestore_avail or mock_allowed
         return {
-            'status': 'healthy', 
+            'status': 'healthy' if is_healthy else 'unhealthy', 
             'service': 'skillbridge-backend',
             'firebase': firebase_status,
             'firestore': {
-                'available': is_firestore_available(),
+                'available': firestore_avail,
+                'mock_allowed': mock_allowed,
                 'base64_configured': bool(os.environ.get('FIREBASE_SERVICE_ACCOUNT_BASE64')),
                 'disabled': os.environ.get('DISABLE_FIREBASE', '').lower() in ('true', '1', 'yes')
             }
-        }, 200
+        }, (200 if is_healthy else 503)
         
     # Start the automated backup scheduler (guarded to run on exactly one worker)
     try:

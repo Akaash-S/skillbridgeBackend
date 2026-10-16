@@ -67,17 +67,24 @@ def is_firestore_available():
     """Check if Firestore is available and initialized"""
     return FIRESTORE_AVAILABLE
 
+def is_mock_allowed() -> bool:
+    """Check if mock database operations are explicitly permitted for local development."""
+    return os.environ.get('ALLOW_MOCK_DB', '').lower() in ('true', '1', 'yes') or \
+           os.environ.get('MOCK_FIRESTORE', '').lower() in ('true', '1', 'yes')
+
 class FirestoreService:
-    """Firestore database operations service with graceful fallback"""
+    """Firestore database operations service with fail-closed production semantics"""
     
     def __init__(self):
         if is_firestore_available():
             self.db = get_db()
         else:
             self.db = None
-            # Only log once during initialization, not for every operation
             if not hasattr(FirestoreService, '_logged_unavailable'):
-                logger.warning("⚠️ Firestore not available - using mock database operations")
+                if is_mock_allowed():
+                    logger.warning("⚠️ Firestore not available - ALLOW_MOCK_DB is active, using mock operations for local dev")
+                else:
+                    logger.error("🚨 CRITICAL: Firestore is unavailable and ALLOW_MOCK_DB is not set. All database operations will fail closed!")
                 FirestoreService._logged_unavailable = True
     
     def _check_availability(self):
@@ -88,9 +95,13 @@ class FirestoreService:
     
     # Generic CRUD operations
     def create_document(self, collection: str, doc_id: str, data: Dict) -> bool:
-        """Create a document in Firestore"""
+        """Create a document in Firestore (fails closed if unavailable unless mock allowed)"""
         if not self._check_availability():
-            return True  # Return success for development mode
+            if is_mock_allowed():
+                logger.warning(f"⚠️ Mock Firestore create allowed for local dev: {collection}/{doc_id}")
+                return True
+            logger.error(f"❌ Firestore unavailable. Rejecting create_document for {collection}/{doc_id} (fail closed).")
+            return False
             
         try:
             doc_ref = self.db.collection(collection).document(doc_id)
@@ -117,13 +128,15 @@ class FirestoreService:
             return None
     
     def update_document(self, collection: str, doc_id: str, data: Dict, create_if_missing: bool = False) -> bool:
-        """Update a document in Firestore"""
+        """Update a document in Firestore (fails closed if unavailable unless mock allowed)"""
         logger.info(f"🔥 FirestoreService: Attempting to update document {collection}/{doc_id}")
-        logger.info(f"📋 Update data: {data}")
         
         if not self._check_availability():
-            logger.warning(f"⚠️ Firestore not available - returning success for development mode")
-            return True  # Return success for development mode
+            if is_mock_allowed():
+                logger.warning(f"⚠️ Mock Firestore update allowed: {collection}/{doc_id}")
+                return True
+            logger.error(f"❌ Firestore unavailable. Rejecting update_document for {collection}/{doc_id} (fail closed).")
+            return False
             
         try:
             doc_ref = self.db.collection(collection).document(doc_id)
@@ -152,9 +165,13 @@ class FirestoreService:
             return False
     
     def delete_document(self, collection: str, doc_id: str) -> bool:
-        """Delete a document from Firestore"""
+        """Delete a document from Firestore (fails closed if unavailable unless mock allowed)"""
         if not self._check_availability():
-            return True  # Return success for development mode
+            if is_mock_allowed():
+                logger.warning(f"⚠️ Mock Firestore delete allowed: {collection}/{doc_id}")
+                return True
+            logger.error(f"❌ Firestore unavailable. Rejecting delete_document for {collection}/{doc_id} (fail closed).")
+            return False
             
         try:
             doc_ref = self.db.collection(collection).document(doc_id)
@@ -168,7 +185,9 @@ class FirestoreService:
     def query_collection(self, collection: str, filters: List = None, limit: int = None) -> List[Dict]:
         """Query a collection with optional filters"""
         if not self._check_availability():
-            return []  # Return empty list for development mode
+            if not is_mock_allowed():
+                logger.error(f"❌ Firestore unavailable. Cannot query collection {collection} (fail closed).")
+            return []
             
         try:
             query = self.db.collection(collection)
@@ -193,9 +212,13 @@ class FirestoreService:
             return []
     
     def batch_write(self, operations: List[Dict]) -> bool:
-        """Perform batch write operations"""
+        """Perform batch write operations (fails closed if unavailable unless mock allowed)"""
         if not self._check_availability():
-            return True  # Return success for development mode
+            if is_mock_allowed():
+                logger.warning(f"⚠️ Mock Firestore batch_write allowed ({len(operations)} operations)")
+                return True
+            logger.error("❌ Firestore unavailable. Rejecting batch_write (fail closed).")
+            return False
             
         try:
             batch = self.db.batch()
@@ -235,9 +258,12 @@ class FirestoreService:
         return self.query_collection('activity_logs', [('uid', '==', uid)], limit=limit)
     
     def log_user_activity(self, uid: str, activity_type: str, message: str) -> bool:
-        """Log user activity"""
+        """Log user activity (fails closed if unavailable unless mock allowed)"""
         if not self._check_availability():
-            return True  # Return success for development mode
+            if is_mock_allowed():
+                return True
+            logger.error(f"❌ Firestore unavailable. Failed to log activity for {uid} (fail closed).")
+            return False
             
         from datetime import datetime
         
