@@ -17,7 +17,9 @@ class RoadmapAI:
         # Configure Gemini
         api_key = Config.GEMINI_API_KEY
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not configured")
+            logger.warning("⚠️ GEMINI_API_KEY not configured for RoadmapAI. Fallback templates will be used.")
+            self.model = None
+            return
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
@@ -47,7 +49,11 @@ class RoadmapAI:
                 list(valid_skill_ids)
             )
             
-            # Generate roadmap with Gemini
+            # Generate roadmap with Gemini (or fallback if unconfigured)
+            if not self.model:
+                logger.warning("Gemini model not initialized - using fallback template roadmap")
+                return self._get_fallback_roadmap(target_role)
+            
             response = self.model.generate_content(prompt)
             
             if not response.text:
