@@ -43,6 +43,17 @@ class Config:
     FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
     CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '')
     
+    # Redis / Rate Limiting Storage
+    REDIS_URL = os.environ.get('REDIS_URL')
+    if not REDIS_URL and os.environ.get('REDIS_HOST'):
+        redis_host = os.environ.get('REDIS_HOST', 'localhost')
+        redis_port = os.environ.get('REDIS_PORT', '6379')
+        redis_pass = os.environ.get('REDIS_PASSWORD', '')
+        auth_part = f":{redis_pass}@" if redis_pass else ""
+        REDIS_URL = f"redis://{auth_part}{redis_host}:{redis_port}/0"
+    
+    RATELIMIT_STORAGE_URI = REDIS_URL or os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
+    
     @staticmethod
     def validate_config():
         """Validate required environment variables"""
