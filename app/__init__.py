@@ -133,20 +133,24 @@ def create_app():
             }
         }, 200
         
-    # Start the automated backup scheduler
+    # Start the automated backup scheduler (guarded to run on exactly one worker)
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from app.services.backup_service import BackupService
+        from app.utils.scheduler_guard import acquire_scheduler_lock
         
-        # We only want to start the scheduler if we are not in testing/generation mode
+        # We only want to start the scheduler if not in testing/generation mode and lock is acquired
         if not app.testing and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
-            # Schedule for 11:00 AM IST daily (using Asia/Kolkata timezone)
-            scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
-            backup_service = BackupService()
-            
-            scheduler.add_job(func=backup_service.perform_backup, trigger="cron", hour=11, minute=0)
-            scheduler.start()
-            logger.info("⏰ Automated backup scheduler started for 11:00 AM IST daily.")
+            if acquire_scheduler_lock():
+                # Schedule for 11:00 AM IST daily (using Asia/Kolkata timezone)
+                scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+                backup_service = BackupService()
+                
+                scheduler.add_job(func=backup_service.perform_backup, trigger="cron", hour=11, minute=0)
+                scheduler.start()
+                logger.info("⏰ Automated backup scheduler started for 11:00 AM IST daily.")
+            else:
+                logger.info("ℹ️ Backup scheduler skipped for this process (lock held by another worker).")
     except ImportError:
         logger.warning("⚠️ APScheduler not installed. Automated backups will not run. Please `pip install APScheduler`.")
     except Exception as e:
