@@ -44,18 +44,17 @@ setup:
 
 # Development targets
 run:
-	python app/main.py
+	python run.py
 
 test:
-	pytest tests/ -v --cov=app
+	pytest tests/ -v
 
 lint:
-	flake8 app/
-	mypy app/
+	flake8 app/ tests/
 
 format:
-	black app/
-	isort app/
+	black app/ tests/
+	isort app/ tests/
 
 clean:
 	find . -type f -name "*.pyc" -delete
@@ -81,12 +80,18 @@ docker-stop:
 docker-logs:
 	docker-compose logs -f
 
-# Deployment targets
+# Deployment & Verification targets
 deploy:
-	./deploy.sh
+	./scripts/deploy.sh compose
 
-test-api:
-	python test_api.py
+vm-setup:
+	./scripts/vm-setup.sh
+
+verify:
+	./scripts/verify-deployment.sh
+
+test-smoke:
+	pytest tests/smoke/ -v
 
 # Development workflow
 dev-setup: setup install-dev
