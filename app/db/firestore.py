@@ -58,7 +58,6 @@ def init_firestore():
 
 def get_db():
     """Get Firestore client instance"""
-    global db
     if db is None and FIRESTORE_AVAILABLE:
         init_firestore()
     return db
