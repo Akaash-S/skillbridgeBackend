@@ -1,4 +1,6 @@
 .env
+.env.*
+.env.gcp
 service-account.json
 credentials/
 venv/
