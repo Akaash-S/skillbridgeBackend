@@ -21,7 +21,7 @@ flowchart TB
     end
 
     subgraph Edge ["Edge & Ingress Layer"]
-        Nginx["Nginx Reverse Proxy\n(SSL Termination, Rate Limiting, HSTS)"]
+        Nginx["Nginx Reverse Proxy\n(SSL Termination, Security Headers, Reverse Proxy)"]
     end
 
     subgraph Application ["Application Server (Docker)"]
