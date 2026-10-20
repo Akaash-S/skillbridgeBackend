@@ -1,176 +1,192 @@
 # SkillBridge Suite - REST Backend 🚀
 
-A production-ready REST API backend for the SkillBridge career development, skills gap analysis, and personalized learning platform. Built with Python 3.12, Flask 3.0, Google Cloud Firestore, and Google Gemini AI.
+A production-grade REST API backend for the SkillBridge AI career development, skill gap analysis, and personalized learning platform. Built with Python 3.12, Flask 3.0, Google Cloud Firestore, and Google Gemini AI.
 
 ---
 
-## ⚡ System Status & Deployment Note
+## ⚡ Deployment & Hosting Status
 
 > [!NOTE]
-> **Deployment Status: Self-Hosted VM Architecture (Dormant / Archived to Conserve Cloud Costs)**
-> The backend was previously provisioned and verified on a Google Cloud Compute Engine VM (`skillbridge-server.asolvitra.tech`) with Let's Encrypt SSL and Docker Compose. The remote VM is currently powered down to eliminate ongoing hosting costs. The service is production-ready and fully runnable locally or on any cloud container host via `scripts/deploy.sh`.
+> **Deployment Status: Demo VM May Be Stopped (Archived to Conserve Cloud Costs)**  
+> The backend was provisioned and verified on a Google Cloud Compute Engine VM (`skillbridge-server.asolvitra.tech`, `e2-medium`, 2 vCPU, 4 GB RAM) with Let's Encrypt SSL, Nginx, and Docker Compose. To eliminate ongoing cloud compute charges, the demo VM is currently stopped. The platform is clean, verified with automated tests, and runnable locally or containerized via `./scripts/deploy.sh compose`.
 
 ---
 
-## 🛠️ Architecture & Verified Specifications
+## 🏗️ Architecture & Verified Specifications
 
-- **API Surface**: **133 Endpoints** registered across **19 Blueprints** (`auth`, `users`, `skills`, `roadmap`, `learning`, `jobs`, `activity`, `settings`, `assessment`, `courses`, `analytics`, `mentorship`, `career_compass`, `resume`, `progress`, `profile`, `gamification`, `projects`, `roles`).
-- **Database**: **Google Cloud Firestore (Native Mode)** spanning **28 collections** (`users`, `user_state`, `skills`, `roadmaps`, `jobs`, `system_backups`, etc.).
-- **Reliability Policy**: **Fail-Closed**. Production mode halts execution and returns `HTTP 503 DATABASE_UNAVAILABLE` if Firestore cannot be reached. In-memory mocking is strictly disabled unless `ALLOW_MOCK_DB=true` is set.
-- **Worker Safety**: **APScheduler Multi-Worker Guard**. Daily automated backups run on exactly one Gunicorn worker via OS file locking (`fcntl.flock` on Unix, `msvcrt` on Windows).
-- **Disaster Recovery**: Automated daily encrypted backups (AES-256 Fernet), chunked into 800KB documents to satisfy Firestore 1MB quotas, retaining 10 versions with dry-run restore validation (`scripts/backup-restore.sh`).
-- **Rate Limiting**: Distributed rate limiting using **Flask-Limiter backed by Redis** (`1000/hr, 100/min` global; `5/min` auth) with resilient in-memory fallback.
-- **CI/CD**: GitHub Actions workflow testing Flake8 linting, Pytest test suites, and Docker container build.
+```mermaid
+flowchart TB
+    subgraph Client ["Client Layer"]
+        SPA["React 18 SPA (Vite)"]
+    end
 
----
+    subgraph Edge ["Edge & Ingress Layer"]
+        Nginx["Nginx Reverse Proxy\n(SSL Termination, Rate Limiting, HSTS)"]
+    end
 
-## 📁 Project Structure
+    subgraph Application ["Application Server (Docker)"]
+        Gunicorn["Gunicorn WSGI (2 Workers)"]
+        
+        subgraph FlaskApp ["Flask 3.0 Core App"]
+            Auth["Auth Middleware\n(HttpOnly SameSite=Lax Cookie, 7-Day TTL)"]
+            Guard["Scheduler File Lock Guard\n(Single-Worker Execution)"]
+            Limiter["Flask-Limiter\n(Redis Storage with In-Memory Fallback)"]
+            RouterBP["19 Registered Blueprints\n(133 API Endpoints)"]
+            
+            subgraph Services ["21 Core Services"]
+                SkillsEngine["Skills Engine\n(Readiness Scoring, Gap Analysis)"]
+                RoadmapAI["Roadmap AI Service\n(Gemini 2.0 Flash + Template Fallback)"]
+                GroqService["Groq AI Service\n(Llama 3.3 70B Versatile)"]
+                MFASvc["MFA Service\n(pyotp TOTP + QR Codes)"]
+                BackupSvc["Backup Service\n(Fernet: AES-128-CBC + HMAC)"]
+                Scheduler["APScheduler\n(11:00 AM IST Daily Automated Backup)"]
+            end
+        end
+    end
 
+    subgraph DataStore ["Data & Cache Layer"]
+        Firestore[("Google Cloud Firestore\n(28 Collections, Native Mode)")]
+        RedisDB[("Redis 7\n(Rate Limits & Fast Caching)")]
+        LockFile["File Lock /tmp/scheduler.lock\n(OS fcntl / msvcrt)"]
+    end
+
+    SPA -- "HTTPS / TLS 1.3" --> Nginx
+    Nginx -- "HTTP Proxy (:8000)" --> Gunicorn
+    Gunicorn --> FlaskApp
+    FlaskApp --> Auth
+    FlaskApp --> Limiter --> RedisDB
+    FlaskApp --> Guard --> LockFile
+    Guard --> Scheduler --> BackupSvc
+    RouterBP --> SkillsEngine
+    RouterBP --> RoadmapAI
+    RouterBP --> GroqService
+    RouterBP --> MFASvc
+    BackupSvc --> Firestore
+    SkillsEngine --> Firestore
 ```
-backend/
-├── app/
-│   ├── __init__.py              # Application factory & blueprint registration
-│   ├── main.py                  # Entry point for container runtime
-│   ├── config.py                # Environment configuration & rate limits
-│   ├── db/                      # Firestore data access layer
-│   │   └── firestore.py         # Fail-closed Firestore service
-│   ├── routes/                  # 19 Route Blueprints (133 endpoints)
-│   ├── services/                # 21 Business logic service modules
-│   │   ├── backup_service.py    # Encrypted backup & rollback engine
-│   │   ├── firebase_service.py  # Auth token verification & cookie sessions
-│   │   ├── roadmap_ai.py        # Gemini 2.0 Flash roadmap synthesis
-│   │   └── skills_engine.py     # Skills scoring & gap analysis
-│   └── utils/                   # Helpers, validators, and scheduler_guard
-├── scripts/                     # Canonical operational scripts
-│   ├── deploy.sh                # Consolidated deploy script (compose / GCP)
-│   ├── setup-ssl.sh             # Consolidated Let's Encrypt / SSL script
-│   ├── backup-restore.sh        # Encrypted backup, restore, and dry-run CLI
-│   ├── backup_cli.py            # Python CLI bridge for BackupService
-│   ├── benchmark_endpoints.py   # Latency measurement tool (p50 / p95)
-│   ├── legacy/                  # Archived one-off deployment iterations
-│   └── debug/                   # Standalone diagnostic tools
-├── tests/                       # Pytest automated test suites
-│   ├── test_auth.py             # Auth endpoints, cookie sessions & validation
-│   ├── test_roadmap.py          # AI roadmap validation & template fallback
-│   └── test_skills_engine.py    # Readiness scoring & skill gap logic
-├── Dockerfile                   # Production Python 3.11-slim container
-├── docker-compose.yml           # App + Nginx + Redis service stack
-├── pytest.ini                   # Pytest configuration
-├── requirements.txt             # Locked Python dependencies
-└── run.py                       # Local development runner
-```
+
+- **Registered Blueprints (19)**: Explicitly registered in `app/__init__.py`:
+  `auth` (`/auth`), `users` (`/users`), `skills` (`/skills`), `roles` (`/roles`), `roadmap` (`/roadmap`), `learning` (`/learning`), `jobs` (`/jobs`), `activity` (`/activity`), `settings` (`/settings`), `user-state` (`/user-state`), `courses` (`/courses`), `mfa` (`/mfa`), `email` (`/email`), `certificate` (`/certificate`), `assessment` (`/assessment`), `learning-journey` (`/`), `assistant` (`/assistant`), `gamification` (`/gamification`), `admin` (`/admin`).
+- **Endpoints Count**: **133 Route Handlers** (1 diagnostic `/health` + 132 handlers across 19 Blueprints).
+- **Backend Services (21)**: Modules in `app/services/`: `activity_logger`, `adzuna_service`, `backup_service`, `email_service`, `fast_roadmap_generator`, `firebase_service`, `github_service`, `groq_service`, `interview_service`, `jobs_service`, `learning_assistant_service`, `learning_service`, `mfa_service`, `mock_jobs_service`, `module_service`, `project_service`, `quiz_service`, `resume_service`, `roadmap_ai`, `skills_engine`, `user_state_manager`.
+- **Firestore Collections (28)**: Verified collection references in codebase:
+  `users`, `user_state`, `user_profiles`, `user_roadmaps`, `user_activities`, `user_settings`, `user_assessments`, `user_courses`, `user_mfa`, `skills`, `master_skills`, `skills_ontology`, `skills_analysis`, `roadmaps`, `jobs`, `trending_jobs`, `analytics_events`, `learning_progress`, `mentorship_sessions`, `career_paths`, `resumes`, `gamification`, `projects`, `roles`, `interview_sessions`, `refresh_tokens`, `system_backups`, `system_metadata`.
+- **Authentication & Sessions**: Firebase Google OAuth integration with dual transport: Bearer authorization headers and secure `HttpOnly`, `SameSite=Lax` session cookies (`sb_session`) with a 7-day TTL (604,800 seconds).
+- **Artificial Intelligence**:
+  - **Google Gemini 2.0 Flash**: Curriculum synthesis and personalized roadmap generation with algorithmic pre-compiled template fallback.
+  - **Groq Llama 3.3 70B Versatile**: Interactive learning assistant and real-time chat guidance.
+- **Multi-Factor Authentication (MFA/TOTP)**: Fully implemented and registered at `/mfa`. Uses `pyotp` for RFC 6238 TOTP generation and verification, `qrcode[pil]` for authenticator QR generation, PBKDF2/Fernet encrypted secret storage, and SHA-256 hashed recovery backup codes.
+- **Disaster Recovery & Backups**: Daily automated encrypted snapshots at 11:00 AM IST via `BackupService`. Uses Fernet cryptography (**AES-128-CBC with PKCS7 padding and HMAC-SHA256 authenticated integrity**). Encrypted data is partitioned into **800KB chunks** to obey Firestore 1MB document quotas, pruned to keep exactly 10 retained snapshots, with dry-run decryption validation before live rollback (`scripts/backup-restore.sh`).
+- **Scheduler Concurrency Guard**: APScheduler is wrapped with an OS-level non-blocking file lock (`fcntl.flock` on Unix, `msvcrt` on Windows). Exactly one Gunicorn worker acquires the lock; all other workers skip initialization, eliminating duplicate backup jobs.
+- **Database Reliability Policy**: **Strict Fail-Closed**. When Firestore is unavailable or credentials are missing in production mode, requests immediately fail closed and return `HTTP 503 DATABASE_UNAVAILABLE`. In-memory mocking is explicitly prohibited unless `ALLOW_MOCK_DB=true` is set.
+- **Rate Limiting**: Distributed rate limiting via `Flask-Limiter` with `REDIS_URL` storage and in-memory fallback. Configured defaults: `1000 per hour, 100 per minute` globally; `5 per minute` on `/auth/login` and `/auth/register`.
 
 ---
 
 ## 🧪 Automated Testing
 
-The backend includes a comprehensive test suite covering skills readiness scoring, JWT and HttpOnly cookie authentication, and AI roadmap input validation:
+Automated test suites cover core business logic, skills engine scoring, authentication cookie lifecycles, and roadmap schema validation:
 
 ```bash
-# Run all automated tests
+# Run unit and integration test suite
 pytest tests/
 
 # Run with verbose output
 pytest -v tests/
 ```
 
-**Test Coverage Summary:**
-- `tests/test_skills_engine.py` (6 passed): Validates readiness score calculation (0–100), full/partial/missing skills classification, and empty set edge cases.
-- `tests/test_auth.py` (6 passed): Validates missing tokens (400), invalid Firebase tokens (401), HttpOnly `sb_session` cookie issuance, authenticated `/auth/me` profiles, and logout cookie expiration.
-- `tests/test_roadmap.py` (6 passed): Validates missing `targetRole` (400), invalid `experienceLevel` (400), template fallbacks, roadmap item schemas (201), and unauthenticated access rejection (401).
+### Verified Test Results (Command: `pytest tests/`)
+- **Collected**: 23 items
+- **Passed**: **18 passed**
+- **Skipped**: **5 skipped** (live smoke tests in `tests/smoke/test_smoke_api.py`, which only run when `API_URL` is set)
+- **Execution Time**: ~2.6 seconds
+
+```text
+tests\smoke\test_smoke_api.py sssss                                      [ 21%]
+tests\test_auth.py ......                                                [ 47%]
+tests\test_roadmap.py ......                                             [ 73%]
+tests\test_skills_engine.py ......                                       [100%]
+================== 18 passed, 5 skipped in 2.61s ==================
+```
+
+### Running Live Smoke Tests Against a Target
+```bash
+# Set target server URL and run smoke tests
+API_URL=http://localhost:8000 pytest tests/smoke/ -v
+```
 
 ---
 
-## 🚀 Local Development Setup
+## 🚀 Local Setup & Development
 
 ### 1. Prerequisites
 - Python 3.11 or 3.12
-- Virtual environment tool (`venv`)
-- (Optional) Redis server for local distributed rate limiting
+- Node.js >= 20 (for frontend)
+- (Optional) Docker & Docker Compose
 
 ### 2. Installation
 ```bash
-# Create virtual environment
+# Create and activate virtual environment
 python -m venv venv
-
-# Activate virtual environment
+# On Windows:
+.\venv\Scripts\Activate.ps1
 # On Linux/macOS:
 source venv/bin/activate
-# On Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
 
-# Install dependencies
+# Install locked dependencies
 pip install -r requirements.txt
 ```
 
 ### 3. Environment Configuration
-Copy the template and configure your keys:
 ```bash
 cp .env.example .env
 ```
-
-Key environment variables:
+Edit `.env` with your API credentials. For local offline development without live Firebase/GCP credentials, enable:
 ```ini
-FLASK_ENV=development
-SECRET_KEY=your-secure-random-secret-key
-PORT=8000
-
-# Firebase & Firestore
-GOOGLE_APPLICATION_CREDENTIALS=credentials/firebase-service-account.json
-# Or for local development without live GCP credentials:
 ALLOW_MOCK_DB=true
-
-# AI & Third-Party APIs
-GEMINI_API_KEY=your-gemini-api-key
-ADZUNA_APP_ID=your-adzuna-app-id
-ADZUNA_APP_KEY=your-adzuna-app-key
-
-# Redis (optional, falls back to in-memory)
-REDIS_URL=redis://localhost:6379/0
+DISABLE_FIREBASE=true
+DISABLE_SCHEDULER=true
 ```
 
-### 4. Running the Server
+### 4. Running the Backend
 ```bash
 python run.py
 ```
-The server will boot at `http://localhost:8000`. Test the health probe:
-```bash
-curl http://localhost:8000/health
-```
+Health probe available at: `http://localhost:8000/health`.
 
 ---
 
-## 🚢 Deployment & Operations
+## 🚢 Canonical Deployment Scripts
 
-All deployment tasks are consolidated into documented scripts in `scripts/`:
+All operational and deployment tasks are consolidated into documented scripts in `scripts/`:
 
-### Docker Compose Production Run
+```
+backend/scripts/
+├── deploy.sh              # Build & run stack with Docker Compose
+├── vm-setup.sh            # Idempotent GCP VM setup (Docker, Nginx, SSL)
+├── verify-deployment.sh   # Post-deployment health & connectivity probe
+├── backup-restore.sh      # Backup CLI (backup, list, dry-run, restore)
+├── backup_cli.py          # Python bridge for BackupService
+├── benchmark_endpoints.py # Latency benchmark tool (p50 / p95)
+├── count_endpoints.py     # Endpoint audit tool
+└── find_collections.py    # Firestore collection audit tool
+```
+
+### Usage
 ```bash
+# Production Docker Compose run
 ./scripts/deploy.sh compose
-```
-Builds the production container with clean cache, brings up Gunicorn and Nginx with rate limiting, and validates `/health`.
 
-### SSL Certificates
-```bash
-# Automated Let's Encrypt acquisition & renewal cron
-./scripts/setup-ssl.sh letsencrypt yourdomain.com admin@yourdomain.com
+# Verify running deployment
+./scripts/verify-deployment.sh
 
-# Local self-signed certificate fallback
-./scripts/setup-ssl.sh self-signed
-```
+# Provision an Ubuntu VM on Google Compute Engine
+sudo ./scripts/vm-setup.sh
 
-### Encrypted Backup & Rollback CLI
-```bash
-# Trigger an on-demand encrypted backup
+# Disaster recovery CLI
 ./scripts/backup-restore.sh backup
-
-# List available Firestore snapshot versions
 ./scripts/backup-restore.sh list
-
-# Validate snapshot decryption & document count without modifying data
 ./scripts/backup-restore.sh dry-run <SNAPSHOT_ID>
-
-# Restore database from snapshot
 ./scripts/backup-restore.sh restore <SNAPSHOT_ID>
 ```
 
@@ -178,7 +194,7 @@ Builds the production container with clean cache, brings up Gunicorn and Nginx w
 
 ## 📈 Latency Benchmarks
 
-Tested on local runtime (50 iterations per endpoint, `ALLOW_MOCK_DB=true`):
+Measured via local benchmark (`scripts/benchmark_endpoints.py`, 50 requests/endpoint, `ALLOW_MOCK_DB=true`):
 - `GET /health`: **p50 = 0.35 ms**, p95 = 0.62 ms
 - `GET /skills/master`: **p50 = 0.65 ms**, p95 = 1.37 ms
 - `GET /roles/categories`: **p50 = 0.43 ms**, p95 = 1.03 ms
