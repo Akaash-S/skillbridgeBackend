@@ -68,9 +68,9 @@ flowchart TB
 - **Registered Blueprints (19)**: Explicitly registered in `app/__init__.py`:
   `auth` (`/auth`), `users` (`/users`), `skills` (`/skills`), `roles` (`/roles`), `roadmap` (`/roadmap`), `learning` (`/learning`), `jobs` (`/jobs`), `activity` (`/activity`), `settings` (`/settings`), `user-state` (`/user-state`), `courses` (`/courses`), `mfa` (`/mfa`), `email` (`/email`), `certificate` (`/certificate`), `assessment` (`/assessment`), `learning-journey` (`/`), `assistant` (`/assistant`), `gamification` (`/gamification`), `admin` (`/admin`).
 - **Endpoints Count**: **133 Route Handlers** (1 diagnostic `/health` + 132 handlers across 19 Blueprints).
-- **Backend Services (21)**: Modules in `app/services/`: `activity_logger`, `adzuna_service`, `backup_service`, `email_service`, `fast_roadmap_generator`, `firebase_service`, `github_service`, `groq_service`, `interview_service`, `jobs_service`, `learning_assistant_service`, `learning_service`, `mfa_service`, `mock_jobs_service`, `module_service`, `project_service`, `quiz_service`, `resume_service`, `roadmap_ai`, `skills_engine`, `user_state_manager`.
-- **Firestore Collections (28)**: Verified collection references in codebase:
-  `users`, `user_state`, `user_profiles`, `user_roadmaps`, `user_activities`, `user_settings`, `user_assessments`, `user_courses`, `user_mfa`, `skills`, `master_skills`, `skills_ontology`, `skills_analysis`, `roadmaps`, `jobs`, `trending_jobs`, `analytics_events`, `learning_progress`, `mentorship_sessions`, `career_paths`, `resumes`, `gamification`, `projects`, `roles`, `interview_sessions`, `refresh_tokens`, `system_backups`, `system_metadata`.
+- **Backend Services (21)**: Verified modules in `app/services/`: `achievement_service`, `analysis_tracker`, `assessment_service`, `backup_service`, `certificate_service`, `email_service`, `firebase_service`, `groq_service`, `jobs_service`, `learning_assistant_service`, `learning_service`, `mfa_service`, `module_service`, `quiz_api_service`, `quiz_service`, `roadmap_ai`, `roadmap_templates`, `skills_engine`, `streak_service`, `user_state_manager`, `xp_service`.
+- **Firestore Collections (28)**: Verified collection references in codebase (`python scripts/find_collections.py`):
+  `activity_logs`, `admin_sessions`, `assessment_sessions`, `chunks`, `issued_certificates`, `job_roles`, `jobs_cache`, `learning_completions`, `learning_resources`, `master_skills`, `quiz_attempts`, `roadmap_templates`, `saved_courses`, `settings`, `skills_master`, `streaks`, `system_backups`, `system_logs`, `system_metadata`, `system_notifications`, `user_analysis_history`, `user_mfa`, `user_roadmaps`, `user_skills`, `user_state`, `user_states`, `users`, `xp`.
 - **Authentication & Sessions**: Firebase Google OAuth integration with dual transport: Bearer authorization headers and secure `HttpOnly`, `SameSite=Lax` session cookies (`sb_session`) with a 7-day TTL (604,800 seconds).
 - **Artificial Intelligence**:
   - **Google Gemini 2.0 Flash**: Curriculum synthesis and personalized roadmap generation with algorithmic pre-compiled template fallback.
@@ -154,6 +154,90 @@ python run.py
 ```
 Health probe available at: `http://localhost:8000/health`.
 
+## 📁 Project Structure
+
+Generated from repository files (`git ls-files`):
+
+```
+backend/
+├── .github/workflows/
+│   └── backend-ci.yml           # CI workflow (flake8, pytest, docker-build)
+├── app/
+│   ├── db/
+│   │   └── firestore.py         # Firestore client & fail-closed error handling
+│   ├── middleware/
+│   │   └── auth_required.py     # Cookie & Bearer JWT authentication middleware
+│   ├── routes/                  # 19 Registered Blueprints (133 route handlers)
+│   │   ├── activity.py
+│   │   ├── admin.py
+│   │   ├── assessment.py
+│   │   ├── assistant.py
+│   │   ├── auth.py
+│   │   ├── certificate.py
+│   │   ├── courses.py
+│   │   ├── email.py
+│   │   ├── gamification.py
+│   │   ├── jobs.py
+│   │   ├── learning.py
+│   │   ├── learning_journey.py
+│   │   ├── mfa.py
+│   │   ├── roadmap.py
+│   │   ├── roles.py
+│   │   ├── settings.py
+│   │   ├── skills.py
+│   │   ├── user_state.py
+│   │   └── users.py
+│   ├── services/                # 21 Core backend services
+│   │   ├── achievement_service.py
+│   │   ├── analysis_tracker.py
+│   │   ├── assessment_service.py
+│   │   ├── backup_service.py
+│   │   ├── certificate_service.py
+│   │   ├── email_service.py
+│   │   ├── firebase_service.py
+│   │   ├── groq_service.py
+│   │   ├── jobs_service.py
+│   │   ├── learning_assistant_service.py
+│   │   ├── learning_service.py
+│   │   ├── mfa_service.py
+│   │   ├── module_service.py
+│   │   ├── quiz_api_service.py
+│   │   ├── quiz_service.py
+│   │   ├── roadmap_ai.py
+│   │   ├── roadmap_templates.py
+│   │   ├── skills_engine.py
+│   │   ├── streak_service.py
+│   │   ├── user_state_manager.py
+│   │   └── xp_service.py
+│   ├── utils/
+│   │   ├── helpers.py
+│   │   ├── scheduler_guard.py   # OS-level non-blocking file locking for APScheduler
+│   │   └── validators.py
+│   ├── config.py                # Environment configuration & rate limit settings
+│   └── main.py                  # Flask app factory & blueprint registration
+├── scripts/                     # 8 Canonical deployment & diagnostic scripts
+│   ├── backup-restore.sh        # Disaster recovery shell CLI
+│   ├── backup_cli.py            # Python bridge for BackupService
+│   ├── benchmark_endpoints.py   # Local dispatch benchmark utility
+│   ├── count_endpoints.py       # Endpoint audit script
+│   ├── deploy.sh                # Docker Compose runner
+│   ├── find_collections.py      # Firestore collection audit script
+│   ├── verify-deployment.sh     # Deployment verification probe
+│   └── vm-setup.sh              # GCE VM provisioning script
+├── tests/                       # Pytest test suite (18 passed, 5 smoke skipped)
+│   ├── smoke/
+│   │   └── test_smoke_api.py    # Live environment health probe (skipped without API_URL)
+│   ├── test_auth.py             # Cookie auth & session lifecycle tests (6 tests)
+│   ├── test_roadmap.py          # Schema validation & roadmap generation tests (6 tests)
+│   └── test_skills_engine.py    # Skills readiness scoring & classification tests (6 tests)
+├── docker-compose.yml           # Local multi-container stack (Flask + Redis)
+├── Dockerfile                   # Production Python 3.12 container
+├── gunicorn.conf.py             # WSGI configuration (2 workers, bind 0.0.0.0:8000)
+├── nginx.conf                   # Reverse proxy, SSL, and security headers configuration
+└── run.py                       # Development entry point
+
+```
+
 ---
 
 ## 🚢 Canonical Deployment Scripts
@@ -192,9 +276,12 @@ sudo ./scripts/vm-setup.sh
 
 ---
 
-## 📈 Latency Benchmarks
+## 📈 Latency Benchmarks (Mock Database Mode Only)
 
-Measured via local benchmark (`scripts/benchmark_endpoints.py`, 50 requests/endpoint, `ALLOW_MOCK_DB=true`):
+> [!WARNING]
+> **Mock Database Mode Only — Not Production SLAs**  
+> The measurements below were collected locally with `ALLOW_MOCK_DB=true` (`scripts/benchmark_endpoints.py`, 50 requests/endpoint). They measure in-memory routing and Flask dispatch latency on local CPU only. They do **not** reflect live Google Cloud Firestore network roundtrips, database indexing, or production WAN latency.
+
 - `GET /health`: **p50 = 0.35 ms**, p95 = 0.62 ms
 - `GET /skills/master`: **p50 = 0.65 ms**, p95 = 1.37 ms
 - `GET /roles/categories`: **p50 = 0.43 ms**, p95 = 1.03 ms
